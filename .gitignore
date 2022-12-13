@@ -1,0 +1,23 @@
+.DS_Store
+.Rhistory
+.RData
+.Rapp.history
+*cache
+*.html
+*.spin.Rmd
+*.spin.md
+*.zip
+*~
+~$*
+\*R\*
+Makefile~
+\#\*R\*#
+.#*
+*.Rdata
+
+# don't track simulation output
+scripts/sim-out/*
+
+# dont track temporary output from DataSynth package
+scripts/datasynth/*
+
