@@ -1,0 +1,303 @@
+---
+title: "Generalizabilty Results"
+author: "Charlotte Mann"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(xtable)
+```
+
+```{r}
+mods <- c("dif.mean", "reg.est","acwt.aux","acwt.gtilde",
+          "acwt.epsilon1","acwt.epsilon3","acwt.epsilon6",
+          "acwt.epsilon10", "acwt.syn", "acwt.syn.dp")
+
+mod.names <- c("Simple Difference", 
+               "Regression", 
+               "ACW-t - G",
+               "ACW-t - G-tilde",
+               "ACW-t - G*, e=1",
+               "ACW-t - G*, 3",
+               "ACW-t - G*, 6",
+               "ACW-t - G*, 10",
+               "ACW-t - Synthetic",
+               "ACW-t - DP synthetic")
+```
+
+## P = 10
+
+```{r}
+load("sim-out/gen-sim-result-10.Rdata")
+```
+
+```{r}
+plot.dat <- est.p10 %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it, names_to = "model", values_to = "est") %>%  
+  filter(!str_starts(model, "cw"))
+
+plot.dat$mod <- factor(plot.dat$model, levels = mods, labels = mod.names)
+```
+
+```{r}
+ggplot(data = plot.dat, aes(y = est, x = mod)) +
+  geom_boxplot() +
+  geom_abline(intercept = .5, slope = 0) +
+  geom_abline(intercept = mean(est.p10$sate), slope = 0, linetype = "dashed", color= "red")+
+  xlab("Estimator") + ylab("Estimate") +
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle=45, size = 10, hjust =1),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        legend.text = element_text(size = 8))
+```
+
+```{r}
+gmse.p10
+```
+```{r}
+est.p10 %>%
+  select(-type, -sate, -it) %>%
+  summarize(across(everything(), ~mean(is.na(.x)))) %>%
+  t()
+```
+
+
+### MSE
+
+```{r}
+plot.dat <- est.p10 %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it, names_to = "model", values_to = "val") %>%
+  group_by(model)%>%
+  summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
+  mutate(bias2 = (est_mean-.5)^2) 
+```
+
+
+```{r}
+plot.dat.long <- plot.dat %>%
+  select(model,est_var, bias2) %>%
+  pivot_longer(est_var:bias2, names_to = "component",
+               values_to = "value") %>%
+  filter(!str_starts(model, "cw"))
+
+plot.dat.long$mod <- factor(plot.dat.long$model, levels = mods, labels = mod.names)
+```
+
+
+```{r}
+cols <- c("#FDBF6F","#1F78B4")
+
+g <- ggplot(data = plot.dat.long, aes(fill = component, y = value, x = mod)) +
+  geom_bar(position="stack", stat="identity") +
+  ylab("MSE") + xlab("Estimator") +
+  ggtitle("P = 10")+
+  scale_fill_manual(name="", values= cols,labels =c("Bias","Variance"))+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle=45, size = 10, hjust =1),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        legend.text = element_text(size = 10))
+  
+g
+```
+
+```{r}
+png("../figures/gen-mse-p10.png", width = 6, height = 4.5, units = 'in', res = 300)
+g
+dev.off()
+```
+
+### Coverage
+
+```{r}
+coverage.tab.p10 <- coverage.p10 %>%
+                        select(-sate, -type) %>%
+                        pivot_longer(!it, names_to = "mod", values_to = "val") %>%
+                        group_by(mod)%>%
+                        summarize(covarage = mean(val, na.rm = T)) %>%
+                        filter(!str_starts(mod, "cw"))
+coverage.tab.p10
+```
+
+## SATE
+```{R, sate}
+mean(est.p10$sate)
+```
+
+## P = 20
+
+```{r}
+load("sim-out/gen-sim-result-20.Rdata")
+```
+
+```{r}
+plot.dat1 <- est.p20 %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it, names_to = "model", values_to = "est") %>%  
+  filter(!str_starts(model, "cw"))
+
+plot.dat1$mod <- factor(plot.dat1$model, levels = mods, labels = mod.names)
+```
+
+```{r}
+ggplot(data = plot.dat1, aes(y = est, x = mod)) +
+  geom_boxplot() +
+  geom_abline(intercept = .5, slope = 0) +
+  geom_abline(intercept = mean(est.p20$sate), slope = 0, linetype = "dashed", color= "red")+
+  xlab("Estimator") + ylab("Estimate") +
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle=45, size = 10, hjust =1),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        legend.text = element_text(size = 8))
+```
+
+```{r}
+est.p20 %>%
+  select(-type, -sate, -it) %>%
+  summarize(across(everything(), ~mean(is.na(.x)))) %>%
+  t()
+```
+
+### MSE
+
+
+```{r}
+plot.dat.long20 <- est.p20 %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it, names_to = "model", values_to = "val") %>%
+  group_by(model)%>%
+  summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
+  mutate(bias2 = (est_mean-.5)^2) %>%
+  select(model,est_var, bias2) %>%
+  pivot_longer(est_var:bias2, names_to = "component",
+               values_to = "value") %>%
+  filter(!str_starts(model, "cw"))
+
+plot.dat.long20$mod <- factor(plot.dat.long20$model, levels = mods, labels = mod.names)
+```
+
+
+```{r}
+cols <- c("#FDBF6F","#1F78B4")
+
+g <- ggplot(data = plot.dat.long20, aes(fill = component, y = value, x = mod)) +
+  geom_bar(position="stack", stat="identity") +
+  ylab("MSE") + xlab("Estimator") +
+  scale_fill_manual(name="", values= cols,labels =c("Bias","Variance"))+
+  ggtitle("P = 20")+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle=45, size = 10, hjust =1),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        legend.text = element_text(size = 10))
+  
+g
+```
+
+```{r}
+png("../figures/gen-mse-p20.png", width = 6, height = 4.5, units = 'in', res = 300)
+g
+dev.off()
+```
+
+### Combined plot
+
+```{r}
+plot.dat.long20$ncovs = "p = 20"
+plot.dat.combined <- plot.dat.long %>%
+  mutate(ncovs = "p = 10") %>% 
+  rbind(plot.dat.long20)
+
+plot.dat.combined$component <- factor(plot.dat.combined$component, levels = c("est_var","bias2"))
+```
+
+```{r}
+cols <- c("#1F78B4","#FDBF6F")
+g <- ggplot(data = plot.dat.combined, aes(fill = component, y = value, x = mod)) +
+  geom_bar(position="stack", stat="identity") + facet_wrap(~ncovs)+
+  ylab("MSE") + 
+  xlab("") +
+  scale_fill_manual(name="", values= cols,labels =c("Variance", "Bias"))+
+  #ggtitle("P = 20")+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle=45, size = 10, hjust =1),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        strip.text = element_text(size = 10),
+        legend.position = "bottom",
+        legend.text = element_text(size = 10))
+  
+g
+```
+
+```{r}
+png("../figures/gen-mse-comb.png", width = 10, height = 6, units = 'in', res = 300)
+g
+dev.off()
+```
+### Coverage
+
+```{r}
+coverage.tab.p20 <- coverage.p20 %>%
+                        select(-sate, -type) %>%
+                        pivot_longer(!it, names_to = "mod", values_to = "val") %>%
+                        group_by(mod)%>%
+                        summarize(coverage = mean(val, na.rm = T)) %>%
+                        filter(!str_starts(mod, "cw"))
+coverage.tab.p20
+```
+
+
+```{r}
+coverage.tab <- coverage.tab.p10 %>%
+  rename(coverage10 = covarage) %>%
+  left_join(coverage.tab.p20) %>%
+  rename(coverage20 = coverage)
+
+coverage.tab$mod <- factor(coverage.tab$mod, levels = mods)
+coverage.tab <- coverage.tab[order(coverage.tab$mod),]
+
+xtab <- xtable(coverage.tab, caption = "", table.placement = "ht",
+               digits = c(0,0,2,2))
+
+print(xtab, comment = F, size="footnotesize",
+      file='../figures/gen-coverage.tex', include.rownames = F)
+```
+
+
+

@@ -1,0 +1,142 @@
+---
+title: "Figures - RELOOP"
+author: "Charlotte Mann"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(kableExtra)
+library(ggplot2)
+library(latex2exp)
+library(RColorBrewer)
+library(xtable)
+```
+
+Order the estimators for tables and plots.
+
+```{r}
+mod.order <- c("dif.mean", "reg.est",
+               "reloop.g", 
+               "reloop.gtilde",  
+               "reloop.gdp1", "reloop.gdp3", "reloop.gdp6",
+               "reloop.gdp10","reloop.gdp15",
+               "reloop.syn",
+               "reloop.syn.dp")
+```
+
+
+
+```{r}
+load("sim-out/var-design/sim-result-10.Rdata")
+load("sim-out/var-design/sim-result-20.Rdata")
+load("sim-out/var-design/sim-result-50.Rdata")
+```
+
+## P = 10
+
+MSE of gram matrix for different noise additions:
+```{r, echo=F}
+apply(gmse.p10,2,mean)
+```
+Table of estimated variances:
+```{r p10, echo = F}
+plot.dat <- out.p10 %>%
+  group_by(mod) %>%
+  summarize(across(everything(), mean))
+
+table_1 <- plot.dat %>%
+  select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  ungroup() %>%
+  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+
+table_1$mod <- factor(table_1$mod, levels = mod.order)
+table_1 <- table_1[order(table_1$mod),]
+
+table_1 %>% 
+  select(mod, est_var, RE_sd, RE_reg) %>%
+  knitr::kable(format = "markdown", digits =3,
+               col.names = c("Estimator", "Var","RE v SD", "RE v Reg"))
+```
+
+```{r}
+xtab <- table_1 %>%
+  select(mod, est_var, RE_sd, RE_reg) %>%
+  xtable(caption = "", table.placement = "ht",
+               digits = c(0,0,3,1,1))
+print(xtab, comment = F, size="footnotesize",
+      file='../figures/var-sim-design-p10.tex', include.rownames = F)
+```
+
+## P = 20
+
+MSE of gram matrix for different noise additions:
+```{r, echo=F}
+apply(gmse.p20,2,mean)
+```
+Table of estimated variances:
+```{r p20,echo=F}
+plot.dat <- out.p20 %>%
+  group_by(mod) %>%
+  filter(est_var < 10) %>% # there were 3 observations with huge variances for loop...
+  summarize(across(everything(), mean))
+
+table_1 <- plot.dat %>%
+  select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  ungroup() %>%
+  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+
+ table_1$mod <- factor(table_1$mod, levels = mod.order)
+ table_1 <- table_1[order(table_1$mod),]
+
+table_1 %>% 
+  select(mod, est_var, RE_sd, RE_reg) %>%
+  knitr::kable(format = "markdown", digits =3,
+               col.names = c("Estimator", "Var","RE v SD", "RE v Reg"))
+```
+
+```{r}
+xtab <- table_1 %>%
+  select(est_var, RE_sd, RE_reg) %>%
+  xtable(caption = "", table.placement = "ht",
+               digits = c(0,3,1,1))
+print(xtab, comment = F, size="footnotesize",
+      file='../figures/var-sim-design-p20.tex', include.rownames = F)
+```
+
+
+## P = 50
+
+MSE of gram matrix for different noise additions:
+```{r, echo=F}
+apply(gmse.p50,2,mean)
+```
+Table of estimated variances:
+```{r p50,echo=F}
+plot.dat <- out.p50 %>%
+  group_by(mod) %>%
+  summarize(across(everything(), mean))
+
+table_1 <- plot.dat %>%
+  select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  ungroup() %>%
+  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+
+table_1$mod <- factor(table_1$mod, levels = mod.order)
+table_1 <- table_1[order(table_1$mod),]
+
+table_1 %>% 
+  select(mod, est_var, RE_sd, RE_reg) %>%
+  knitr::kable(format = "markdown", digits =3,
+               col.names = c("Estimator", "Var","RE v SD", "RE v Reg"))
+```
+
+```{r}
+xtab <- table_1 %>%
+  select(est_var, RE_sd, RE_reg) %>%
+  xtable(caption = "", table.placement = "ht",
+               digits = c(0,3,1,1))
+print(xtab, comment = F, size="footnotesize",
+      file='../figures/var-sim-design-p50.tex', include.rownames = F)
+```
