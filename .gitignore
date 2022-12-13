@@ -14,10 +14,11 @@ Makefile~
 \#\*R\*#
 .#*
 *.Rdata
+*.tex
+*.png
 
 # don't track simulation output
-scripts/sim-out/*
+scripts/sim-out/*.Rdata
 
 # dont track temporary output from DataSynth package
 scripts/datasynth/*
-
