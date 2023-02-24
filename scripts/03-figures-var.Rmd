@@ -24,6 +24,14 @@ mod.order <- c("dif.mean", "reg.est",
                "re.gdp10","re.gdp15",
                "re.syn",
                "re.syn.dp")
+
+mod.names <- c("Difference in Means", "RCT Covs", 
+               "G",
+               "G-tilde",
+               "G*, e=1", "G*, e=3", "G*, e=6",
+               "G*, e=10", "G*, e=15",
+               "Synthetic",
+               "DP synthetic")
 ```
 
 Load datasets from GreatLakes.
@@ -140,4 +148,116 @@ print(xtab, comment = F, size="footnotesize",
       file='../figures/var-sim-reg-p50.tex', include.rownames = F)
 ```
 
+### Plot format for presentations
 
+```{R}
+all.out <- out.p10 %>%
+  mutate(p = "P = 10") %>%
+  bind_rows(out.p20) %>%
+  mutate(p = case_when(is.na(p) ~ "P = 20",
+                       TRUE ~ p)) %>%
+  bind_rows(out.p20) %>%
+  mutate(p = case_when(is.na(p) ~ "P = 50",
+                        TRUE ~ p))
+
+plot.dat <- all.out %>%
+  select(mod, p, est_mean, est_var, RE_sd, RE_reg) %>%
+  group_by(p, mod) %>%
+  summarize(across(everything(), mean)) %>%
+  pivot_longer(RE_sd:RE_reg,
+               names_to = "comparison",
+               values_to = "val",
+               names_pattern = "RE_(.*)") %>%
+  arrange(p, comparison, val) %>%
+  group_by(p, comparison) %>%
+  mutate(id = row_number()) %>%
+  mutate(type = case_when(str_detect(mod,"gdp") ~ "GDP",
+                          mod %in% c("dif.mean","reg.est") ~ "RCT",
+                          str_detect(mod,"syn") ~ "synth",
+                          mod == "re.gtilde" ~ "gtilde",
+                          TRUE ~ "g"
+                          ))
+
+plot.dat$mod <- factor(plot.dat$mod, levels = mod.order)
+plot.dat$comparison <- factor(plot.dat$comparison, 
+                              levels = c("sd","reg"), 
+                              labels =c("Simple Difference","Regression"))
+```
+
+```{r}
+cols <- c("#fd8d3c","#f768a1",
+          "#8c6bb1",
+          "#6e016b",
+          "#a1d99b","#74c476","#41ab5d","#238b45","#005a32",
+          "#4292c6","#08306b")
+ 
+shapes <- c(19, 19,
+            18,
+            17,
+            17,17,17,17,17,
+            15,15)
+```
+
+```{r}
+g <- ggplot(data = plot.dat %>% filter(comparison == "Simple Difference"), 
+            aes(x = id, y = val, color = mod, shape = mod)) +
+  geom_hline(yintercept = 1)+
+  geom_point(size =3)+ facet_wrap(~p)+
+  xlab("") + 
+  ylab("Relative Efficiency") +
+  scale_color_manual(name="", values = cols, labels = mod.names)+
+  scale_shape_manual(name="", values = shapes, labels = mod.names) +
+  #ggtitle("P = 20")+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 10),
+        legend.position = "right",
+        legend.text = element_text(size = 10))
+  
+g
+
+png("../figures/re-simpledif.png", width = 10, height = 4, units = 'in', res = 300)
+g
+dev.off()
+```
+
+```{r}
+g <- ggplot(data = plot.dat %>% filter(comparison == "Regression"), 
+            aes(x = id, y = val, color = mod, shape = mod)) +
+  geom_hline(yintercept = 1)+
+  geom_point(size =3)+ facet_wrap(~p)+
+  xlab("") + 
+  ylab("Relative Efficiency") +
+  scale_color_manual(name="", values = cols, labels = mod.names)+
+  scale_shape_manual(name="", values = shapes, labels = mod.names) +
+  #ggtitle("P = 20")+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        strip.text = element_text(size = 10),
+        legend.position = "right",
+        axis.ticks.x = element_blank(),
+        legend.text = element_text(size = 10))
+  
+g
+
+png("../figures/re-regression.png", width = 10, height = 4, units = 'in', res = 300)
+g
+dev.off()
+```
