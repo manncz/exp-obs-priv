@@ -78,12 +78,31 @@ est.p10 %>%
 ### MSE
 
 ```{r}
+sim.se <- est.p10 %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it, names_to = "model", values_to = "val") %>%
+  mutate(group =factor(rep(1:20,each=800))) %>%
+  group_by(model, group)%>%
+  summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
+  mutate(bias2 = (est_mean-.5)^2, mse = est_var + bias2)  %>%
+  group_by(model) %>%
+  summarize(mse_sim_se = sd(mse)/sqrt(20),
+            group_mse = mean(mse),
+            est_var_sim_se = sd(est_var)/sqrt(20),
+            bias2_sim_se = sd(bias2)/sqrt(20))
+
+
 plot.dat <- est.p10 %>%
   select(-sate, -type) %>%
   pivot_longer(!it, names_to = "model", values_to = "val") %>%
   group_by(model)%>%
   summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
-  mutate(bias2 = (est_mean-.5)^2) 
+  mutate(bias2 = (est_mean-.5)^2, mse = bias2 + est_var) %>%
+  left_join(sim.se, by = "model") %>%
+  mutate(ub_mse = mse + 2*mse_sim_se,
+         lb_mse = mse - 2*mse_sim_se) %>%
+  filter(model %in% mods) %>%
+  mutate(model = factor(model,  levels = mods, labels = mod.names))
 ```
 
 
@@ -91,18 +110,16 @@ plot.dat <- est.p10 %>%
 plot.dat.long <- plot.dat %>%
   select(model,est_var, bias2) %>%
   pivot_longer(est_var:bias2, names_to = "component",
-               values_to = "value") %>%
-  filter(!str_starts(model, "cw"))
-
-plot.dat.long$mod <- factor(plot.dat.long$model, levels = mods, labels = mod.names)
+               values_to = "value")
 ```
 
 
 ```{r}
 cols <- c("#FDBF6F","#1F78B4")
 
-g <- ggplot(data = plot.dat.long, aes(fill = component, y = value, x = mod)) +
-  geom_bar(position="stack", stat="identity") +
+g <- ggplot() +
+  geom_bar(position="stack", stat="identity", data = plot.dat.long, aes(fill = component, y = value, x = model)) +
+  geom_errorbar(data = plot.dat, aes(x = model, ymin = lb_mse, ymax = ub_mse), linewidth = .4, width = .5) +
   ylab("MSE") + xlab("Estimator") +
   ggtitle("P = 10")+
   scale_fill_manual(name="", values= cols,labels =c("Bias","Variance"))+
@@ -127,17 +144,6 @@ g
 dev.off()
 ```
 
-### Coverage
-
-```{r}
-coverage.tab.p10 <- coverage.p10 %>%
-                        select(-sate, -type) %>%
-                        pivot_longer(!it, names_to = "mod", values_to = "val") %>%
-                        group_by(mod)%>%
-                        summarize(covarage = mean(val, na.rm = T)) %>%
-                        filter(!str_starts(mod, "cw"))
-coverage.tab.p10
-```
 
 ## SATE
 ```{R, sate}
@@ -186,29 +192,51 @@ est.p20 %>%
 
 
 ```{r}
-plot.dat.long20 <- est.p20 %>%
+sim.se20 <- est.p20 %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it, names_to = "model", values_to = "val") %>%
+  mutate(group =factor(rep(1:20,each=800))) %>%
+  group_by(model, group)%>%
+  summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
+  mutate(bias2 = (est_mean-.5)^2, mse = est_var + bias2)  %>%
+  group_by(model) %>%
+  summarize(mse_sim_se = sd(mse)/sqrt(20),
+            group_mse = mean(mse),
+            est_var_sim_se = sd(est_var)/sqrt(20),
+            bias2_sim_se = sd(bias2)/sqrt(20))
+
+
+plot.dat20 <- est.p20 %>%
   select(-sate, -type) %>%
   pivot_longer(!it, names_to = "model", values_to = "val") %>%
   group_by(model)%>%
   summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
-  mutate(bias2 = (est_mean-.5)^2) %>%
+  mutate(bias2 = (est_mean-.5)^2, mse = bias2 + est_var) %>%
+  left_join(sim.se20, by = "model") %>%
+  mutate(ub_mse = mse + 2*mse_sim_se,
+         lb_mse = mse - 2*mse_sim_se) %>%
+  filter(model %in% mods) %>%
+  mutate(model = factor(model,  levels = mods, labels = mod.names))
+```
+
+
+```{r}
+plot.dat.long20 <- plot.dat20 %>%
   select(model,est_var, bias2) %>%
   pivot_longer(est_var:bias2, names_to = "component",
-               values_to = "value") %>%
-  filter(!str_starts(model, "cw"))
-
-plot.dat.long20$mod <- factor(plot.dat.long20$model, levels = mods, labels = mod.names)
+               values_to = "value")
 ```
 
 
 ```{r}
 cols <- c("#FDBF6F","#1F78B4")
 
-g <- ggplot(data = plot.dat.long20, aes(fill = component, y = value, x = mod)) +
-  geom_bar(position="stack", stat="identity") +
+g <- ggplot() +
+  geom_bar(position="stack", stat="identity", data = plot.dat.long20, aes(fill = component, y = value, x = model)) +
+  geom_errorbar(data = plot.dat20, aes(x = model, ymin = lb_mse, ymax = ub_mse), linewidth = .4, width = .5) +
   ylab("MSE") + xlab("Estimator") +
-  scale_fill_manual(name="", values= cols,labels =c("Bias","Variance"))+
   ggtitle("P = 20")+
+  scale_fill_manual(name="", values= cols,labels =c("Bias","Variance"))+
   theme(text = element_text(family = "sans",
                             size = 10),
         panel.border = element_blank(),
@@ -234,17 +262,23 @@ dev.off()
 
 ```{r}
 plot.dat.long20$ncovs = "p = 20"
-plot.dat.combined <- plot.dat.long %>%
+plot.dat.long.combined <- plot.dat.long %>%
   mutate(ncovs = "p = 10") %>% 
-  rbind(plot.dat.long20)
+  rbind(plot.dat.long20) %>%
+  mutate(component = factor(component, levels = c("est_var","bias2")))
 
-plot.dat.combined$component <- factor(plot.dat.combined$component, levels = c("est_var","bias2"))
+plot.dat20$ncovs = "p = 20"
+plot.dat.combined <- plot.dat %>%
+  mutate(ncovs = "p = 10") %>% 
+  rbind(plot.dat20)
 ```
 
 ```{r}
 cols <- c("#1F78B4","#FDBF6F")
-g <- ggplot(data = plot.dat.combined, aes(fill = component, y = value, x = mod)) +
-  geom_bar(position="stack", stat="identity") + facet_wrap(~ncovs)+
+g <- ggplot() +
+  geom_bar(position="stack", stat="identity",data = plot.dat.long.combined, aes(fill = component, y = value, x = model)) +
+   geom_errorbar(data = plot.dat.combined, aes(x = model, ymin = lb_mse, ymax = ub_mse), linewidth = .4, width = .5) +
+  facet_wrap(~ncovs)+
   ylab("MSE") + 
   xlab("") +
   scale_fill_manual(name="", values= cols,labels =c("Variance", "Bias"))+
@@ -273,8 +307,10 @@ dev.off()
 ```
 tikz version
 ```{r}
-g <- ggplot(data = plot.dat.combined, aes(fill = component, y = value, x = mod)) +
-  geom_bar(position="stack", stat="identity") + facet_wrap(~ncovs)+
+g <- ggplot()+
+  geom_bar(position="stack", stat="identity",data = plot.dat.long.combined, aes(fill = component, y = value, x = model)) +
+  geom_errorbar(data = plot.dat.combined, aes(x = model, ymin = lb_mse, ymax = ub_mse), linewidth = .4, width = .5) +
+  facet_wrap(~ncovs)+
   ylab("MSE") + 
   xlab("") +
   scale_fill_manual(name="", values= cols,labels =c("Variance", "Bias"))+
@@ -305,31 +341,38 @@ dev.off()
 ### Coverage
 
 ```{r}
-coverage.tab.p20 <- coverage.p20 %>%
-                        select(-sate, -type) %>%
-                        pivot_longer(!it, names_to = "mod", values_to = "val") %>%
-                        group_by(mod)%>%
-                        summarize(coverage = mean(val, na.rm = T)) %>%
-                        filter(!str_starts(mod, "cw"))
-coverage.tab.p20
+coverage.all <- coverage.p10 %>%
+  mutate(ncov = 10) %>%
+  rbind(coverage.p20 %>% mutate(ncov = 20)) %>%
+  mutate(group = factor(rep(1:40, each=50))) %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it:group, names_to = "mod", values_to = "val") 
+
+coverage.group <- coverage.all %>%
+  group_by(ncov, group, mod) %>%
+  summarize(covg = mean(val, na.rm = T)) %>%
+  group_by(ncov, mod) %>%
+  summarize(sim_se_covg = sd(covg)/sqrt(20),
+            group_covg = mean(covg))
+
+coverage.tab <- coverage.all %>%
+  group_by(ncov, mod) %>%
+  summarize(covg = mean(val, na.rm = T)) %>%
+  left_join(coverage.group, by = c("ncov", "mod")) %>%
+  mutate(covg = sprintf("%1.2f (%1.3f)", covg, sim_se_covg)) %>%
+  select(ncov, mod, covg) %>%
+  pivot_wider(names_from = ncov, values_from = covg,
+              names_glue = "{.value}{ncov}") %>%
+  filter(mod %in% mods) %>%
+  mutate(mod = factor(mod, levels = mods)) %>%
+  arrange(mod)
 ```
 
-
 ```{r}
-coverage.tab <- coverage.tab.p10 %>%
-  rename(coverage10 = covarage) %>%
-  left_join(coverage.tab.p20) %>%
-  rename(coverage20 = coverage)
-
-coverage.tab$mod <- factor(coverage.tab$mod, levels = mods)
-coverage.tab <- coverage.tab[order(coverage.tab$mod),]
-
-xtab <- xtable(coverage.tab, caption = "", table.placement = "ht",
-               digits = c(0,0,2,2))
+xtab <- xtable(coverage.tab, caption = "", table.placement = "ht")
 
 print(xtab, comment = F, size="footnotesize",
       file='../figures/gen-coverage.tex', include.rownames = F)
 ```
-
 
 

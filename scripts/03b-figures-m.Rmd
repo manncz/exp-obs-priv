@@ -45,15 +45,10 @@ Table of estimated variances:
 plot.dat <- out.p10 %>%
   mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
-  summarize(across(everything(), mean))
-
-se.dat <- out.p10 %>%
-  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
-  group_by(mod) %>%
-  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+  summarize(across(everything(), list(mean = mean, se = ~sd(.x)/sqrt(100))))
 
 table_1 <- plot.dat %>%
-  select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  select(mod, est_mean = est_mean_mean, est_var = est_var_mean, RE_sd = RE_sd_mean, RE_reg = RE_reg_mean, RE_sd_se, RE_reg_se) %>%
   mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
                                 TRUE ~ NA_real_),
          reg_var = case_when(mod == "reg.est" ~ est_var,
@@ -61,7 +56,11 @@ table_1 <- plot.dat %>%
   ungroup() %>%
   mutate(sd_var = mean(sd_var, na.rm = T),
          reg_var = mean(reg_var, na.rm = T)) %>%
-  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var) %>%
+  mutate(RE_sd = case_when(RE_sd_se > .01 ~ sprintf("%1.2f (%1.2f)", RE_sd, RE_sd_se),
+                           TRUE ~ sprintf("%1.2f", RE_sd)),
+         RE_reg = case_when(RE_reg_se > .01 ~ sprintf("%1.2f (%1.2f)", RE_reg, RE_reg_se),
+                           TRUE ~ sprintf("%1.2f", RE_reg)))
 
 table_1$mod <- factor(table_1$mod, levels = mod.order)
 table_1 <- table_1[order(table_1$mod),]
@@ -92,15 +91,10 @@ Table of estimated variances:
 plot.dat <- out.p20 %>%
   mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
-  summarize(across(everything(), mean))
-
-se.dat <- out.p20 %>%
-  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
-  group_by(mod) %>%
-  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+  summarize(across(everything(), list(mean = mean, se = ~sd(.x)/sqrt(100))))
 
 table_1 <- plot.dat %>%
-  select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  select(mod, est_mean = est_mean_mean, est_var = est_var_mean, RE_sd = RE_sd_mean, RE_reg = RE_reg_mean, RE_sd_se, RE_reg_se) %>%
   mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
                                 TRUE ~ NA_real_),
          reg_var = case_when(mod == "reg.est" ~ est_var,
@@ -108,9 +102,14 @@ table_1 <- plot.dat %>%
   ungroup() %>%
   mutate(sd_var = mean(sd_var, na.rm = T),
          reg_var = mean(reg_var, na.rm = T)) %>%
-  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
- table_1$mod <- factor(table_1$mod, levels = mod.order)
- table_1 <- table_1[order(table_1$mod),]
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var) %>%
+  mutate(RE_sd = case_when(RE_sd_se > .015 ~ sprintf("%1.2f (%1.2f)", RE_sd, RE_sd_se),
+                           TRUE ~ sprintf("%1.2f", RE_sd)),
+         RE_reg = case_when(RE_reg_se > .015 ~ sprintf("%1.2f (%1.2f)", RE_reg, RE_reg_se),
+                           TRUE ~ sprintf("%1.2f", RE_reg)))
+
+table_1$mod <- factor(table_1$mod, levels = mod.order)
+table_1 <- table_1[order(table_1$mod),]
 
 table_1 %>% 
   select(mod, est_var, RE_sd, RE_reg) %>%
@@ -139,15 +138,10 @@ Table of estimated variances:
 plot.dat <- out.p50 %>%
   mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
-  summarize(across(everything(), mean))
-
-se.dat <- out.p50 %>%
-  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
-  group_by(mod) %>%
-  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+  summarize(across(everything(), list(mean = mean, se = ~sd(.x)/sqrt(100))))
 
 table_1 <- plot.dat %>%
-  select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  select(mod, est_mean = est_mean_mean, est_var = est_var_mean, RE_sd = RE_sd_mean, RE_reg = RE_reg_mean, RE_sd_se, RE_reg_se) %>%
   mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
                                 TRUE ~ NA_real_),
          reg_var = case_when(mod == "reg.est" ~ est_var,
@@ -155,7 +149,11 @@ table_1 <- plot.dat %>%
   ungroup() %>%
   mutate(sd_var = mean(sd_var, na.rm = T),
          reg_var = mean(reg_var, na.rm = T)) %>%
-  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var) %>%
+  mutate(RE_sd = case_when(RE_sd_se > .015 ~ sprintf("%1.2f (%1.2f)", RE_sd, RE_sd_se),
+                           TRUE ~ sprintf("%1.2f", RE_sd)),
+         RE_reg = case_when(RE_reg_se > .015 ~ sprintf("%1.2f (%1.2f)", RE_reg, RE_reg_se),
+                           TRUE ~ sprintf("%1.2f", RE_reg)))
 
 table_1$mod <- factor(table_1$mod, levels = mod.order)
 table_1 <- table_1[order(table_1$mod),]
