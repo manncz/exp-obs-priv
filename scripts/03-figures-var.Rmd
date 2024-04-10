@@ -6,12 +6,14 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
 library(dplyr)
 library(kableExtra)
 library(ggplot2)
 library(latex2exp)
 library(RColorBrewer)
 library(xtable)
+library(stringr)
 ```
 
 Order the estimators for tables and plots.
@@ -51,13 +53,25 @@ apply(gmse.p10,2,mean)
 Table of estimated variances:
 ```{r p10, echo = F}
 plot.dat <- out.p10 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
   summarize(across(everything(), mean))
 
+se.dat <- out.p10 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
+  group_by(mod) %>%
+  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+
 table_1 <- plot.dat %>%
   select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
+                                TRUE ~ NA_real_),
+         reg_var = case_when(mod == "reg.est" ~ est_var,
+                                TRUE ~ NA_real_)) %>%
   ungroup() %>%
-  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+  mutate(sd_var = mean(sd_var, na.rm = T),
+         reg_var = mean(reg_var, na.rm = T)) %>%
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
 
 table_1$mod <- factor(table_1$mod, levels = mod.order)
 table_1 <- table_1[order(table_1$mod),]
@@ -70,9 +84,9 @@ table_1 %>%
 
 ```{r}
 xtab <- table_1 %>%
-  select(mod, est_var, RE_sd, RE_reg) %>%
+  select(est_var, RE_sd, RE_reg) %>%
   xtable(caption = "", table.placement = "ht",
-               digits = c(0,0,3,1,1))
+               digits = c(0,3,2,2))
 print(xtab, comment = F, size="footnotesize",
       file='../figures/var-sim-reg-p10.tex', include.rownames = F)
 ```
@@ -86,13 +100,25 @@ apply(gmse.p20,2,mean)
 Table of estimated variances:
 ```{r p20,echo=F}
 plot.dat <- out.p20 %>%
+   mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
   summarize(across(everything(), mean))
 
+se.dat <- out.p20 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
+  group_by(mod) %>%
+  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+
 table_1 <- plot.dat %>%
   select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
+                                TRUE ~ NA_real_),
+         reg_var = case_when(mod == "reg.est" ~ est_var,
+                                TRUE ~ NA_real_)) %>%
   ungroup() %>%
-  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+  mutate(sd_var = mean(sd_var, na.rm = T),
+         reg_var = mean(reg_var, na.rm = T)) %>%
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
 
  table_1$mod <- factor(table_1$mod, levels = mod.order)
  table_1 <- table_1[order(table_1$mod),]
@@ -107,7 +133,7 @@ table_1 %>%
 xtab <- table_1 %>%
   select(est_var, RE_sd, RE_reg) %>%
   xtable(caption = "", table.placement = "ht",
-               digits = c(0,3,1,1))
+               digits = c(0,3,2,2))
 print(xtab, comment = F, size="footnotesize",
       file='../figures/var-sim-reg-p20.tex', include.rownames = F)
 ```
@@ -122,13 +148,25 @@ apply(gmse.p50,2,mean)
 Table of estimated variances:
 ```{r p50,echo=F}
 plot.dat <- out.p50 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
   summarize(across(everything(), mean))
 
+se.dat <- out.p50 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
+  group_by(mod) %>%
+  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+
 table_1 <- plot.dat %>%
   select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
+                                TRUE ~ NA_real_),
+         reg_var = case_when(mod == "reg.est" ~ est_var,
+                                TRUE ~ NA_real_)) %>%
   ungroup() %>%
-  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+  mutate(sd_var = mean(sd_var, na.rm = T),
+         reg_var = mean(reg_var, na.rm = T)) %>%
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
 
 table_1$mod <- factor(table_1$mod, levels = mod.order)
 table_1 <- table_1[order(table_1$mod),]
@@ -143,7 +181,7 @@ table_1 %>%
 xtab <- table_1 %>%
   select(est_var, RE_sd, RE_reg) %>%
   xtable(caption = "", table.placement = "ht",
-               digits = c(0,3,1,1))
+               digits = c(0,3,2,2))
 print(xtab, comment = F, size="footnotesize",
       file='../figures/var-sim-reg-p50.tex', include.rownames = F)
 ```
@@ -156,19 +194,20 @@ all.out <- out.p10 %>%
   bind_rows(out.p20) %>%
   mutate(p = case_when(is.na(p) ~ "P = 20",
                        TRUE ~ p)) %>%
-  bind_rows(out.p20) %>%
+  bind_rows(out.p50) %>%
   mutate(p = case_when(is.na(p) ~ "P = 50",
                         TRUE ~ p))
 
 plot.dat <- all.out %>%
   select(mod, p, est_mean, est_var, RE_sd, RE_reg) %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(p, mod) %>%
   summarize(across(everything(), mean)) %>%
   pivot_longer(RE_sd:RE_reg,
                names_to = "comparison",
                values_to = "val",
                names_pattern = "RE_(.*)") %>%
-  arrange(p, comparison, val) %>%
+  arrange(p, comparison, -val) %>%
   group_by(p, comparison) %>%
   mutate(id = row_number()) %>%
   mutate(type = case_when(str_detect(mod,"gdp") ~ "GDP",
@@ -236,15 +275,15 @@ g <- ggplot(data = plot.dat %>% filter(comparison == "Regression"),
   geom_hline(yintercept = 1)+
   geom_point(size =3)+ facet_wrap(~p)+
   xlab("") + 
-  ylab("Relative Efficiency") +
   scale_color_manual(name="", values = cols, labels = mod.names)+
   scale_shape_manual(name="", values = shapes, labels = mod.names) +
   #ggtitle("P = 20")+
+  scale_y_continuous(name="Relative Efficiency", breaks =c(.5,.75,1,1.5,2,2.5,3), limits=c(.4,3.1))+
   theme(text = element_text(family = "sans",
                             size = 10),
         panel.border = element_blank(),
         panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
+        panel.grid.minor = element_blank(),
         plot.title = element_text(hjust = 0.5),
         axis.text.x = element_blank(),
         axis.text.y = element_text(size = 10),
@@ -260,4 +299,74 @@ g
 png("../figures/re-regression.png", width = 10, height = 4, units = 'in', res = 300)
 g
 dev.off()
+```
+
+
+## simplified
+
+```{r}
+simp <- list()
+simp[["1"]] <- c("reg.est", "dif.mean")
+simp[["2"]] <- c("reg.est", "dif.mean", "re.g")
+simp[["3"]] <- c("reg.est", "dif.mean", "re.g","re.syn.dp","re.syn")
+simp[["4"]] <- c("reg.est", "dif.mean", "re.g","re.syn.dp","re.syn","re.gtilde")
+
+
+mod.order <- c("dif.mean", "reg.est",
+               "re.g", 
+               "re.gtilde",  
+               "re.gdp1", "re.gdp3", "re.gdp6",
+               "re.gdp10","re.gdp15",
+               "re.syn",
+               "re.syn.dp")
+
+mod.names <- c("Difference in Means", "RCT Covs", 
+               "G",
+               "G-tilde",
+               "G*, e=1", "G*, e=3", "G*, e=6",
+               "G*, e=10", "G*, e=15",
+               "Synthetic",
+               "DP synthetic")
+```
+
+```{r}
+
+for(x in 1:4){
+  
+  idx <- which(mod.order %in% simp[[x]])
+  
+  g <- ggplot(data = plot.dat %>% filter(comparison == "Regression" & (mod 
+                                       %in% simp[[as.character(x)]])), 
+            aes(x = id, y = val, color = mod, shape = mod)) +
+  geom_hline(yintercept = 1)+
+  geom_point(size =3)+ facet_wrap(~p)+
+  xlab("") + 
+  #ylab("Relative Efficiency") +
+  scale_color_manual(name="", values = cols[idx], labels = mod.names[idx])+
+  scale_shape_manual(name="", values = shapes[idx], labels = mod.names[idx]) +
+  scale_y_continuous(name="Relative Efficiency", breaks =c(.5,.75,1,1.5,2,2.5,3), limits=c(.4,3.1))+
+  #ggtitle("P = 20")+
+  #ylim(.32,2.12)+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size = 10),
+        strip.text = element_text(size = 10),
+        legend.position = "right",
+        axis.ticks.x = element_blank(),
+        legend.text = element_text(size = 10))
+  
+
+  
+  png(paste0("../figures/re-regression-simp-",x,".png"), width = 10, height = 4, units = 'in', res = 300)
+  print(g)
+  dev.off()
+}
+
 ```

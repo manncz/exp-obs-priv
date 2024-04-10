@@ -13,6 +13,7 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 library(xtable)
+library(tikzDevice)
 ```
 
 ```{r}
@@ -270,6 +271,37 @@ png("../figures/gen-mse-comb.png", width = 10, height = 6, units = 'in', res = 3
 g
 dev.off()
 ```
+tikz version
+```{r}
+g <- ggplot(data = plot.dat.combined, aes(fill = component, y = value, x = mod)) +
+  geom_bar(position="stack", stat="identity") + facet_wrap(~ncovs)+
+  ylab("MSE") + 
+  xlab("") +
+  scale_fill_manual(name="", values= cols,labels =c("Variance", "Bias"))+
+  #ggtitle("P = 20")+
+  theme(text = element_text(family = "sans",
+                            size = 8),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle=45, size = 8, hjust =1, color = "black"),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        strip.text = element_text(size = 8),
+        legend.position = "bottom",
+        legend.text = element_text(size = 8))
+
+```
+
+```{r}
+tikz(file = "../figures/gen-mse-comb.tex", width = 6.6, height = 4)
+g
+dev.off()
+```
+
+
 ### Coverage
 
 ```{r}

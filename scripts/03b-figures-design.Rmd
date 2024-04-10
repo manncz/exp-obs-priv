@@ -43,13 +43,26 @@ apply(gmse.p10,2,mean)
 Table of estimated variances:
 ```{r p10, echo = F}
 plot.dat <- out.p10 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
   summarize(across(everything(), mean))
 
+se.dat <- out.p10 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
+  group_by(mod) %>%
+  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+
 table_1 <- plot.dat %>%
   select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
+                                TRUE ~ NA_real_),
+         reg_var = case_when(mod == "reg.est" ~ est_var,
+                                TRUE ~ NA_real_)) %>%
   ungroup() %>%
-  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+  mutate(sd_var = mean(sd_var, na.rm = T),
+         reg_var = mean(reg_var, na.rm = T)) %>%
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
+
 
 table_1$mod <- factor(table_1$mod, levels = mod.order)
 table_1 <- table_1[order(table_1$mod),]
@@ -62,9 +75,9 @@ table_1 %>%
 
 ```{r}
 xtab <- table_1 %>%
-  select(mod, est_var, RE_sd, RE_reg) %>%
+  select(est_var, RE_sd, RE_reg) %>%
   xtable(caption = "", table.placement = "ht",
-               digits = c(0,0,3,1,1))
+               digits = c(0,3,2,2))
 print(xtab, comment = F, size="footnotesize",
       file='../figures/var-sim-design-p10.tex', include.rownames = F)
 ```
@@ -78,14 +91,27 @@ apply(gmse.p20,2,mean)
 Table of estimated variances:
 ```{r p20,echo=F}
 plot.dat <- out.p20 %>%
+  filter(est_var < 10) %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
-  filter(est_var < 10) %>% # there were 3 observations with huge variances for loop...
   summarize(across(everything(), mean))
+
+se.dat <- out.p20 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
+  group_by(mod) %>%
+  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
 
 table_1 <- plot.dat %>%
   select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
+                                TRUE ~ NA_real_),
+         reg_var = case_when(mod == "reg.est" ~ est_var,
+                                TRUE ~ NA_real_)) %>%
   ungroup() %>%
-  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+  mutate(sd_var = mean(sd_var, na.rm = T),
+         reg_var = mean(reg_var, na.rm = T)) %>%
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
+
 
  table_1$mod <- factor(table_1$mod, levels = mod.order)
  table_1 <- table_1[order(table_1$mod),]
@@ -100,7 +126,7 @@ table_1 %>%
 xtab <- table_1 %>%
   select(est_var, RE_sd, RE_reg) %>%
   xtable(caption = "", table.placement = "ht",
-               digits = c(0,3,1,1))
+               digits = c(0,3,2,2))
 print(xtab, comment = F, size="footnotesize",
       file='../figures/var-sim-design-p20.tex', include.rownames = F)
 ```
@@ -115,13 +141,25 @@ apply(gmse.p50,2,mean)
 Table of estimated variances:
 ```{r p50,echo=F}
 plot.dat <- out.p50 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
   group_by(mod) %>%
   summarize(across(everything(), mean))
 
+se.dat <- out.p50 %>%
+  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
+  group_by(mod) %>%
+  summarize(across(everything(), ~(sd(.)/sqrt(1000)) ))
+
 table_1 <- plot.dat %>%
   select(mod, est_mean, est_var, RE_sd, RE_reg) %>%
+  mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
+                                TRUE ~ NA_real_),
+         reg_var = case_when(mod == "reg.est" ~ est_var,
+                                TRUE ~ NA_real_)) %>%
   ungroup() %>%
-  mutate(RE_sd1 = est_var[1]/est_var, RE_reg2 = est_var[2]/est_var)
+  mutate(sd_var = mean(sd_var, na.rm = T),
+         reg_var = mean(reg_var, na.rm = T)) %>%
+  mutate(RE_sd2 = est_var/sd_var, RE_reg2 = est_var/reg_var)
 
 table_1$mod <- factor(table_1$mod, levels = mod.order)
 table_1 <- table_1[order(table_1$mod),]
@@ -136,7 +174,7 @@ table_1 %>%
 xtab <- table_1 %>%
   select(est_var, RE_sd, RE_reg) %>%
   xtable(caption = "", table.placement = "ht",
-               digits = c(0,3,1,1))
+               digits = c(0,3,2,2))
 print(xtab, comment = F, size="footnotesize",
       file='../figures/var-sim-design-p50.tex', include.rownames = F)
 ```
