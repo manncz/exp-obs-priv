@@ -193,31 +193,47 @@ all.out <- out.p10 %>%
                        TRUE ~ p)) %>%
   bind_rows(out.p50) %>%
   mutate(p = case_when(is.na(p) ~ "P = 50",
-                        TRUE ~ p))
+                        TRUE ~ p)) %>%
+  select(mod, p, est_mean, est_var, RE_sd, RE_reg) %>%
+  group_by(mod, p) %>%
+  summarize(across(everything(), list(mean = mean, se = ~sd(.x)/sqrt(100))))
 
 plot.dat <- all.out %>%
-  select(mod, p, est_mean, est_var, RE_sd, RE_reg) %>%
-  mutate(RE_sd = 1/RE_sd, RE_reg = 1/RE_reg) %>%
-  group_by(p, mod) %>%
-  summarize(across(everything(), mean)) %>%
-  pivot_longer(RE_sd:RE_reg,
-               names_to = "comparison",
-               values_to = "val",
-               names_pattern = "RE_(.*)") %>%
-  arrange(p, comparison, -val) %>%
-  group_by(p, comparison) %>%
-  mutate(id = row_number()) %>%
+  select(mod,p, est_mean = est_mean_mean, est_var = est_var_mean, RE_sd = RE_sd_mean, RE_reg = RE_reg_mean, RE_sd_se, RE_reg_se) %>%
+  ungroup() %>%
+  mutate(sd_var = case_when(mod == "dif.mean" ~ est_var,
+                                TRUE ~ NA_real_),
+         reg_var = case_when(mod == "reg.est" ~ est_var,
+                                TRUE ~ NA_real_)) %>%
+  group_by(p) %>%
+  mutate(sd_var = mean(sd_var, na.rm = T),
+         reg_var = mean(reg_var, na.rm = T)) %>%
+  mutate(RE_sd2 = sd_var/est_var, RE_reg2 = reg_var/est_var) %>%
+  mutate(ub = RE_reg + 2*RE_reg_se, lb = RE_reg - 2*RE_reg_se) %>%
   mutate(type = case_when(str_detect(mod,"gdp") ~ "GDP",
                           mod %in% c("dif.mean","reg.est") ~ "RCT",
                           str_detect(mod,"syn") ~ "synth",
                           mod == "re.gtilde" ~ "gtilde",
                           TRUE ~ "g"
-                          ))
+                          )) %>%
+  arrange(p, RE_reg) %>%
+  group_by(p) %>%
+  mutate(id = row_number())
+
+
+```
+
+
+```{r}
+mod.names.tikz <- c("Dif in Means", "RCT Covs", 
+               "$\\bm G$",
+               "$\\tilde{\\bm G}$",
+               "$\\bm G^{*}, \\epsilon=1$", "$\\bm G^{*}, \\epsilon=3$", "$\\bm G^{*}, \\epsilon=6$",
+               "$\\bm G^{*}, \\epsilon=10$", "$\\bm G^{*}, \\epsilon=15$",
+               "Synthetic ($\\tilde{\\bm D}$)",
+               "DP Synthetic ($\\bm D^{*}$)")
 
 plot.dat$mod <- factor(plot.dat$mod, levels = mod.order)
-plot.dat$comparison <- factor(plot.dat$comparison, 
-                              levels = c("sd","reg"), 
-                              labels =c("Simple Difference","Regression"))
 ```
 
 ```{r}
@@ -234,48 +250,17 @@ shapes <- c(19, 19,
             15,15)
 ```
 
-```{r}
-g <- ggplot(data = plot.dat %>% filter(comparison == "Simple Difference"), 
-            aes(x = id, y = val, color = mod, shape = mod)) +
-  geom_hline(yintercept = 1)+
-  geom_point(size =3)+ facet_wrap(~p)+
-  xlab("") + 
-  ylab("Relative Efficiency") +
-  scale_color_manual(name="", values = cols, labels = mod.names)+
-  scale_shape_manual(name="", values = shapes, labels = mod.names) +
-  #ggtitle("P = 20")+
-  theme(text = element_text(family = "sans",
-                            size = 10),
-        panel.border = element_blank(),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.text.x = element_blank(),
-        axis.text.y = element_text(size = 10),
-        axis.title.y = element_text(size = 10),
-        axis.title.x = element_text(size = 10),
-        axis.ticks.x = element_blank(),
-        strip.text = element_text(size = 10),
-        legend.position = "right",
-        legend.text = element_text(size = 10))
-  
-g
-
-png("../figures/re-simpledif.png", width = 10, height = 4, units = 'in', res = 300)
-g
-dev.off()
-```
 
 ```{r}
-g <- ggplot(data = plot.dat %>% filter(comparison == "Regression"), 
-            aes(x = id, y = val, color = mod, shape = mod)) +
+g <- ggplot(data = plot.dat, 
+            aes(x = id, y = RE_reg, color = mod, shape = mod)) +
   geom_hline(yintercept = 1)+
   geom_point(size =3)+ facet_wrap(~p)+
   xlab("") + 
   scale_color_manual(name="", values = cols, labels = mod.names)+
   scale_shape_manual(name="", values = shapes, labels = mod.names) +
   #ggtitle("P = 20")+
-  scale_y_continuous(name="Relative Efficiency", breaks =c(.5,.75,1,1.5,2,2.5,3), limits=c(.4,3.1))+
+  scale_y_continuous(name="Relative Efficiency", breaks =c(.5,.75,1,1.25, 1.5, 1.75, 2), limits=c(.3,2.11))+
   theme(text = element_text(family = "sans",
                             size = 10),
         panel.border = element_blank(),
@@ -292,12 +277,95 @@ g <- ggplot(data = plot.dat %>% filter(comparison == "Regression"),
         legend.text = element_text(size = 10))
   
 g
+```
 
+
+```{r}
 png("../figures/re-regression.png", width = 10, height = 4, units = 'in', res = 300)
 g
 dev.off()
 ```
 
+### defense slides
+
+```{r}
+g <- ggplot(data = plot.dat) +
+  geom_hline(yintercept = 1) +
+  #geom_errorbar(aes(x = id, ymin = lb, ymax = ub), width = .5, linewidth = .2)+
+  geom_point(aes(x = id, y = RE_reg, color = mod, shape = mod), size =2)+ 
+  facet_wrap(~p)+
+  xlab("") + 
+  scale_color_manual(name="", values = cols, labels = mod.names)+
+  scale_shape_manual(name="", values = shapes, labels = mod.names) +
+  #ggtitle("P = 20")+
+  scale_y_continuous(name="Relative Efficiency", breaks =c(.5,.75,1,1.25, 1.5, 1.75, 2), limits=c(.3,2.2))+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 6),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        strip.text = element_text(size = 8),
+        legend.position = "right",
+        legend.justification="top",
+        axis.ticks.x = element_blank(),
+        legend.box.spacing = unit(0, 'cm'),
+        legend.text = element_text(size = 8),
+        legend.margin=ggplot2::margin(-10,0,0,7),
+        plot.margin = unit(c(0, 0, 0, 0),"inches"))
+
+g
+```
+
+
+```{r}
+tikz(file = "../figures/re-regression-pres-all.tex", width = 5.7, height = 2.7, bg = "transparent")
+g
+dev.off()
+```
+
+```{r}
+g <- ggplot(data = plot.dat) +
+  geom_hline(yintercept = 1) +
+  geom_errorbar(aes(x = id, ymin = lb, ymax = ub), width = .5, linewidth = .2)+
+  geom_point(aes(x = id, y = RE_reg, color = mod, shape = mod), size =2)+ 
+  facet_wrap(~p)+
+  xlab("") + 
+  scale_color_manual(name="", values = cols, labels = mod.names)+
+  scale_shape_manual(name="", values = shapes, labels = mod.names) +
+  #ggtitle("P = 20")+
+  scale_y_continuous(name="Relative Efficiency", breaks =c(.5,.75,1,1.25, 1.5, 1.75, 2), limits=c(.3,2.2))+
+  theme(text = element_text(family = "sans",
+                            size = 10),
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 6),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        strip.text = element_text(size = 8),
+        legend.position = "right",
+        legend.justification="top",
+        axis.ticks.x = element_blank(),
+        legend.box.spacing = unit(0, 'cm'),
+        legend.text = element_text(size = 8),
+        legend.margin=ggplot2::margin(-10,0,0,7),
+        plot.margin = unit(c(0, 0, 0, 0),"inches"))
+
+g
+```
+
+```{r}
+tikz(file = "../figures/re-regression-pres-all-werrrors.tex", width = 5.7, height = 2.7, bg = "transparent")
+g
+dev.off()
+```
 
 ## simplified
 
