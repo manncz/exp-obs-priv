@@ -21,6 +21,112 @@ logit <- function(p){
   log(p/(1-p))
 }
 
+# Generate differentially private gram matrix
+dp_private_gram <- function(X, epsilon = 3, delta = 10^-5,
+                            mean.budget=1/3, e2.budget=1/3, e12.budget=1/3,
+                            lbound, ubound,
+                            mechanism = "gaussian", seed = 1234){
+  
+  p <- ncol(X)
+  n <- nrow(X)
+  
+  # divide privacy budget
+  mean.ep = epsilon*mean.budget
+  var.ep = epsilon*e2.budget
+  cov.ep = epsilon*e12.budget/((p+1)*p/2)
+  
+  mean.delta = delta*mean.budget
+  var.delta = delta*e2.budget
+  cov.delta = delta*e12.budget/((p+1)*p/2)
+  
+  covepMat <-  rep(1,p)%*%t(rep(1/cov.ep,p))
+  diag(covepMat) <- 1/var.ep
+  
+  covdeltaMat <-  rep(1,p)%*%t(rep(1/cov.delta,p))
+  diag(covdeltaMat) <- 1/var.delta
+  
+  ########## calculate scale parameter for Gaussian mechanism ###########
+  
+  # sensitivities based on given vectors of upper and lower bounds for the columns (assumed to have been inputted in order)
+  mean.sens <- pmax(abs(ubound),abs(lbound))/n
+  cov.sens <- (pmax(abs(ubound),abs(lbound)))%*%t(pmax(abs(ubound),abs(lbound)))/n
+  
+  mean.scaleparam <-  mean.sens/mean.ep*sqrt(2*log(1.25/mean.delta))
+  cov.scaleparam <-  cov.sens*covepMat*sqrt(2*log(1.25*covdeltaMat))*upper.tri(cov.sens, diag = T)
+  
+  ##########                    inject noise                   ###########
+  
+  # calculate original covariance matrix and mean based on X, truncated by upper and lower bounds
+  lboundMat <- rep(1,n)%*%t(lbound)
+  uboundMat <- rep(1,n)%*%t(ubound)
+  
+  X_trunc <- X*(X >= lboundMat) + lboundMat*(X < lboundMat)
+  X_trunc <- X_trunc*(X_trunc <= uboundMat) + uboundMat*(X_trunc > uboundMat)
+  
+  base.EX1X2 <- t(X_trunc)%*%X_trunc/n
+  base.EX <- rep(1,n)%*%X_trunc/n
+  
+  # generate random noise
+  mean.noisevec <- sapply(mean.scaleparam, function(x){rnorm(1, mean = 0, sd = x)})
+  
+  cov.noisemat <- apply(cov.scaleparam, 1:2,  function(x){rnorm(1, mean = 0, sd = x)})
+  cov.noisemat <- cov.noisemat + t(cov.noisemat*upper.tri(cov.noisemat, diag = F))
+  rownames(cov.noisemat) <- colnames(cov.noisemat) <- NULL
+  #isSymmetric(cov.noisemat)
+  
+  # add random noise to mean and covariance
+  dp.EX <- as.vector(base.EX + mean.noisevec)
+  dp.EX1X2 <- base.EX1X2 + cov.noisemat
+  #isSymmetric(dp.EX1X2)
+  
+  ##########                reconstruct matrix                ###########
+  dp.G <- cbind(dp.EX, dp.EX1X2)
+  dp.G <- rbind(c(1, dp.EX), dp.G)
+  colnames(dp.G)[1] <- "intercept"
+  rownames(dp.G)[1] <- "intercept"  
+  
+  ##########              post-process positive-definite                  ###########
+  
+  #check if positive-definite
+  es <- eigen(dp.G, symmetric = T)
+  
+  #if any negative eigenvalues, reconstruct a positive definite matrix
+  if(sum(es$values < 0) > 0){
+    
+    print("Original DP Gram matrix not positive-definite. Post processing...")
+    
+    medval <- median(es$values[es$values > 0])
+    
+    # reset any negative eigenvalues to 0
+    poseigvals <- es$values
+    poseigvals[es$values < 0] <- 0
+    
+    # ridge with median positive eigenvalue
+    poseigvals <- poseigvals + medval
+    
+    # reconstruct matrix
+    V <- es$vectors
+    lambda <- diag(poseigvals)
+    
+    dp.G.recon <- V%*%lambda%*%solve(V)
+    colnames(dp.G.recon) <- rownames(dp.G.recon) <-  colnames(dp.G)
+  }else{
+    dp.G.recon <- dp.G
+  }
+  
+  
+  #returning a list to match the local sensitivity function, just to make integrating the 
+  #new function easier to integrate into the simulation functions
+  return(list(G = dp.G.recon, dp.noise = NULL))
+  
+}
+
+
+
+################################################################################
+ #                                OLD FUNCTIONS                              #
+################################################################################
+
 # Calculate scale parameter for Laplace noise in DP Laplace Mechanism
 calc_dp_err_lap <- function(X, epsilon = log(3),delta =NULL,
                             statistic){
@@ -106,13 +212,13 @@ calc_dp_err_gaus <- function(X, epsilon = log(3), delta = 10^-5,
       X_i <- scale(X_i)
       G_i <- t(X_i)%*%X_i
       G_i <- G_i*upper.tri(G_i, diag = F)
-      delta_f <- sum((G_i-G.compare)^2)
+      delta_f <- sqrt(sum((G_i-G.compare)^2))
     }else if(statistic == "mean"){
       E_i = apply(X_i, 2, mean)
-      delta_f <- (E_i - E.compare)^2
+      delta_f <- sqrt((E_i - E.compare)^2)
     }else if(statistic == "sd"){
       V_i = apply(X_i, 2, sd)
-      delta_f <- (V_i - V.compare)^2
+      delta_f <- sqrt((V_i - V.compare)^2)
     }
     
     delta_f
@@ -128,16 +234,17 @@ calc_dp_err_gaus <- function(X, epsilon = log(3), delta = 10^-5,
     delta <- delta / ncol(X)
   }
     
-  lambda <- max_delta_f/epsilon*sqrt(2*log(1.25/delta))
+  lambda <- (max_delta_f/epsilon)*sqrt(2*log(1.25/delta))
   
   return(lambda)
 }
 
+
 # Differentially private procedure for a gram matrix 
-dp_private_gram <- function(X, epsilon = 3, delta = 10^-5,
-                            mean.budget=1/3, sd.budget=1/3, corr.budget=1/3,
-                            mechanism = "gaussian", seed = 1234,
-                            mean.noise = NULL, sd.noise = NULL, corr.noise = NULL){
+dp_private_gram_local <- function(X, epsilon = 3, delta = 10^-5,
+                                mean.budget=1/3, sd.budget=1/3, corr.budget=1/3,
+                                mechanism = "gaussian", seed = 1234,
+                                mean.noise = NULL, sd.noise = NULL, corr.noise = NULL){
   
   set.seed(seed)
   
@@ -159,7 +266,7 @@ dp_private_gram <- function(X, epsilon = 3, delta = 10^-5,
   sd.epsilon <- epsilon*sd.budget
   corr.epsilon <- epsilon*corr.budget
   
-  # calculate gaussian noise for mean and variance vectors and corr matrix
+  # calculate scale parameter for DP mechanism for mean and variance vectors and corr matrix
   #noise for mean and sd will be vectors
   if(is.null(mean.noise)){
     mean.noise <- dp_noise_fun(X, epsilon = mean.epsilon, delta = mean.delta,
@@ -178,19 +285,19 @@ dp_private_gram <- function(X, epsilon = 3, delta = 10^-5,
   corr.mat.indx <- upper.tri(corr, diag = F)
   corr <- corr*corr.mat.indx
   
-  #create matrix of gaussian noise matching dimenstions of correlation matrix
+  #create matrix of gaussian noise matching dimensions of correlation matrix
   corr.noise.mat <- matrix(rep(0,p^2), nrow = p)
   
   if(mechanism == "gaussian"){
-    corr.noise.mat[corr.mat.indx] <- rnorm((p-1)*p/2, mean = 0, sd = sqrt(corr.noise))
-    mean.noise.vec <- sapply(sqrt(mean.noise), function(x){rnorm(1, mean = 0, sd = x)})
-    sd.noise.vec <- sapply(sqrt(sd.noise), function(x){rnorm(1, mean = 0, sd = x)})
+    corr.noise.mat[corr.mat.indx] <- rnorm((p-1)*p/2, mean = 0, sd = corr.noise)
+    mean.noise.vec <- sapply(mean.noise, function(x){rnorm(1, mean = 0, sd = x)})
+    sd.noise.vec <- sapply(sd.noise, function(x){rnorm(1, mean = 0, sd = x)})
   }else{
     corr.noise.mat[corr.mat.indx] <- rlaplace((p-1)*p/2, scale = corr.noise)
     mean.noise.vec <- sapply(mean.noise, function(x){rlaplace(p, scale = x)})
     sd.noise.vec <- sapply(sd.noise, function(x){rlaplace(p, scale = x)})
   }
- 
+  
   # gaussian mechanism for differentially private correlation matrix, mean and variance vectors
   dp.corr <- corr + corr.noise.mat
   dp.mean <- true.mean + mean.noise.vec
@@ -210,6 +317,7 @@ dp_private_gram <- function(X, epsilon = 3, delta = 10^-5,
   # dp.EX1X2 <- corr/n*sig1sig2 + x1x2
   # dp.EX2 <- true.sd^2*(n-1)/n + true.mean^2
   # dp.EX <- true.mean
+  # mean(dp.G - G)
   
   #reconstruct X'X/n, now differentially private with non-central empirical moments
   dp.G <- dp.EX1X2 + t(dp.EX1X2)
@@ -218,6 +326,33 @@ dp_private_gram <- function(X, epsilon = 3, delta = 10^-5,
   dp.G <- rbind(c(1, dp.EX), dp.G)
   colnames(dp.G)[1] <- "intercept"
   rownames(dp.G)[1] <- "intercept"
+  
+  #check if positive-definite
+  es <- eigen(dp.G, symmetric = T)
+  
+  #if any negative eigenvalues, reconstruct a positive definite matrix
+  if(sum(es$values < 0) > 0){
+    
+    print("Original DP Gram matrix not positive-definite. Post processing...")
+    
+    medval <- median(es$values[es$values > 0])
+    
+    # reset any negative eigenvalues to 0
+    poseigvals <- es$values
+    poseigvals[es$values < 0] <- 0
+    
+    # ridge with median positive eigenvalue
+    poseigvals <- poseigvals + medval
+    
+    # reconstruct matrix
+    V <- es$vectors
+    lambda <- diag(poseigvals)
+    
+    dp.G.recon <- V%*%lambda%*%solve(V)
+    colnames(dp.G.recon) <- rownames(dp.G.recon) <-  colnames(dp.G)
+  }else{
+    dp.G.recon <- dp.G
+  }
   
   # save noise and epsilon values for gaussian mechanism
   names(sd.noise) <- names(mean.noise) <- colnames(X)
@@ -228,5 +363,5 @@ dp_private_gram <- function(X, epsilon = 3, delta = 10^-5,
   names(ep.vec) <- c("mean", "sd", "corr")
   
   # return differentially private X'X/n, and noise and epsilon parameters
-  return(list(G = dp.G, dp.noise = dp.noise, epsilon.budget = ep.vec))
+  return(list(G = dp.G.recon, dp.noise = dp.noise, epsilon.budget = ep.vec))
 }

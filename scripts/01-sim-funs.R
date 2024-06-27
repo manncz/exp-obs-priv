@@ -76,34 +76,37 @@ gen_obs_rct_dat <- function(n.obs = 1000, n.rct = 50,
 
 #================================== AUXILIARY PREDICTIONS ====================================#
 
-# epsilon is a vector of the epsilons used for DP private gram matrix. The epsilon
-# used for the DP private synthetic data is fixed in 00-data-synth.py
 gen_aux_predictions <- function(dat, dat.rct, lambda, 
-                                epsilon = c(1,3,6), delta = 10^-5,
+                                epsilon = c(1,3,6), delta = 10^-5, 
+                                dp.upbound = NULL, dp.lbound = NULL,
                                 seed = 2795, mechanism = "gaussian", 
-                                syn.dp = T, syn.epsilon = 3){
+                                syn.dp = T, syn.epsilon = 3, syn = T){
   
   set.seed(seed)
   
-  if(!dir.exists("datasynth")){
-    dir.create("datasynth")
-  }
-  write.csv(dat, file = paste0("datasynth/sim_dat",seed,".csv"))
-
-  #fix weird error with synthpop by changing column name of y column
-  syn.dat.feed <- dat
-  colnames(syn.dat.feed)[1] <- "X0"
-  
 #------------------------ synthetic data - non DP ------------------------#
-  syn.dat <- synthpop::syn(data = syn.dat.feed, seed=seed, minnumlevels = 2)$syn
+
+  if(syn){
+    #fix weird error with synthpop by changing column name of y column
+    syn.dat.feed <- dat
+    colnames(syn.dat.feed)[1] <- "X0"
   
-  lm.syn <- lm(X0~., data = syn.dat)
-  beta.syn <- lm.syn$coefficients
+    syn.dat <- synthpop::syn(data = syn.dat.feed, seed=seed, minnumlevels = 2)$syn
+    
+    lm.syn <- lm(X0~., data = syn.dat)
+    beta.syn <- lm.syn$coefficients
   
-  print("synthetic data complete")
+    print("synthetic data complete")
+  }
   
 #------------------------ synthetic data - DP  ------------------------#
   if(syn.dp){
+    
+    if(!dir.exists("datasynth")){
+      dir.create("datasynth")
+    }
+    write.csv(dat, file = paste0("datasynth/sim_dat",seed,".csv"))
+    
     
     py_run_string(paste0('input_dat = "datasynth/sim_dat',seed,'.csv"'))
     py_run_string(paste0('desc_file = "datasynth/description',seed,'.json"'))
@@ -123,6 +126,8 @@ gen_aux_predictions <- function(dat, dat.rct, lambda,
     
     print("DP synthetic data complete")
   }
+  
+#------------------------------ Non-Private  ----------------------------#
   # gram matrix
   lm.g <- lm(y~., data = dat)
   beta.g <- lm.g$coefficients
@@ -138,28 +143,57 @@ gen_aux_predictions <- function(dat, dat.rct, lambda,
 #------------------------ Differentially private gram matrix (g-star) ------------------------#
   
   # determine epsilon budget for each type of statistic
-  budget <- c(p,p, (p-1)*p/2)
+  budget <- c(p, p, (p-1)*p/2)
   budget <- budget/sum(budget)
-  names(budget) <- c("mean","sd","corr")
+  names(budget) <- c("mean","e2","e12")
   
   # generate differentially private gram matrices. 
-  # start with first epsilon and calculate the noise (which involves a loo calculation)
-  dp.ep1 <- dp_private_gram(X, epsilon = epsilon[1], mean.budget = budget["mean"],
-                            sd.budget =  budget["sd"], corr.budget =  budget["corr"],
-                            delta = delta, mechanism = mechanism, seed = seed)
+  # start with first epsilon and calculate the noise 
   
-  # now all of hte other noise amounts are just based on the first calculation
-  mean.noise <- dp.ep1[["dp.noise"]]$mean*epsilon[1]
-  sd.noise <- dp.ep1[["dp.noise"]]$sd*epsilon[1]
-  corr.noise <- dp.ep1[["dp.noise"]]$corr[1]*epsilon[1]
+  # if a known bound for the data,
+  if(!is.null(dp.upbound)){
+    
+    dp.ep1 <- dp_private_gram(X, epsilon = epsilon[1], 
+                              mean.budget = budget["mean"], e2.budget =  budget["e2"], e12.budget = budget["e12"],
+                              lbound = dp.lbound, ubound = dp.upbound,
+                              delta = delta, mechanism = mechanism, seed = seed)
+    
+  }else{
+    
+    budget <- c(p, p, (p-1)*p/2)
+    budget <- budget/sum(budget)
+    names(budget) <- c("mean","sd","corr")
+    
+    # if no known bound given, calculate local sensitivity directly from data (involves a loo calculation)
+    dp.ep1 <- dp_private_gram_local(X, epsilon = epsilon[1],  
+                                    mean.budget = budget["mean"], cov.budget =  budget["cov"], 
+                                    lbound = dp.lbound, ubound = dp.upbound,
+                                    delta = delta, mechanism = mechanism, seed = seed)
+    
+    # now all of the other noise amounts are just based on the first sensitivity calculation
+    mean.noise <- dp.ep1[["dp.noise"]]$mean*epsilon[1]
+    sd.noise <- dp.ep1[["dp.noise"]]$sd*epsilon[1]
+    corr.noise <- dp.ep1[["dp.noise"]]$corr[1]*epsilon[1]
+    
+  }
   
-  #generate the rest of the epsilons
+  #generate for the rest of the epsilons
   if(length(epsilon > 1)){
-    dp.out <- lapply(epsilon[-1], FUN = function(x){dp_private_gram(X, epsilon = x, mean.budget = budget["mean"],
+    
+    if(!is.null(dp.upbound)){
+      dp.out <- lapply(epsilon[-1], FUN = function(x){dp_private_gram(X, epsilon = x, 
+                                mean.budget = budget["mean"], e2.budget =  budget["e2"], e12.budget = budget["e12"],
+                                lbound = dp.lbound, ubound = dp.upbound,
+                                delta = delta, mechanism = mechanism, seed = seed)})
+    }else{
+      dp.out <- lapply(epsilon[-1], FUN = function(x){dp_private_gram_local(X, epsilon = x, mean.budget = budget["mean"],
                               sd.budget =  budget["sd"], corr.budget =  budget["corr"],
                               delta = delta, mechanism = mechanism, seed = seed,
                               mean.noise = mean.noise/x, sd.noise = sd.noise/x, corr.noise = corr.noise/x)})
+    }
+    
     names(dp.out) <- as.character(epsilon[-1])
+    
   }
   
   dp.out[[as.character(epsilon[1])]] <- dp.ep1
@@ -169,21 +203,29 @@ gen_aux_predictions <- function(dat, dat.rct, lambda,
   G_dp <- dp.out[[as.character(epsilon[1])]]$G
   y_idx <- which(colnames(G_dp) == "y")
   beta.g.dp <- (solve(G_dp[-c(y_idx),-c(y_idx)])%*%G_dp[-c(y_idx),y_idx])
+  
+  G.fnorm <- norm(G_dp - G, "F")
+  G.spectralnorm <- norm(G_dp - G, "2")
+  
   dp.noise[[paste0("epsilon", epsilon[1])]] <- dp.out[[as.character(epsilon[1])]]$dp.noise
-  G.mse <- sum((G_dp*upper.tri.ind - G*upper.tri.ind)^2)/(sum(upper.tri.ind)-1)
+  
   
   if(length(epsilon) >1){
     for(i in 2:length(epsilon)){
       G_dp <- dp.out[[as.character(epsilon[i])]]$G
-      y_idx <- which(colnames(G_dp) == "y")
+  
       beta.g.dp <- cbind(beta.g.dp, (solve(G_dp[-c(y_idx),-c(y_idx)])%*%G_dp[-c(y_idx),y_idx]))
+      
+      G.fnorm <- c(G.fnorm, norm(G_dp - G, "F"))
+      G.spectralnorm <-  c(G.spectralnorm, norm(G_dp - G, "2"))
+      
       dp.noise[[paste0("epsilon", epsilon[i])]] <- dp.out[[as.character(epsilon[i])]]$dp.noise
-      G.mse <- c(G.mse, sum((G_dp*upper.tri.ind - G*upper.tri.ind)^2)/(sum(upper.tri.ind)-1))
-    }
+    } 
   }
   
   colnames(beta.g.dp) <- paste0("epsilon", epsilon)
-  names(G.mse) <- paste0("epsilon", epsilon)
+  names(G.fnorm) <- paste0("epsilon", epsilon)
+  names(G.spectralnorm) <- paste0("epsilon", epsilon)
   
   print("DP gram matrix complete")
   
@@ -204,18 +246,38 @@ gen_aux_predictions <- function(dat, dat.rct, lambda,
     X1 <- cbind(rep(1, nrow(dat)),Xsyn)
     G_dpsyn <- t(X1)%*%X1/n
     
-    G.mse <- c(G.mse, sum((G_dpsyn/n*upper.tri.ind - G*upper.tri.ind)^2)/(sum(upper.tri.ind)-1))
-    names(G.mse)[length(G.mse)] <- "g.dpsyn"
+    G.fnorm <- c(G.fnorm, norm(G_dpsyn - G, "F"))
+    names(G.fnorm)[length(G.fnorm)] <- "g.dpsyn"
+    
+    G.spectralnorm <-  c(G.spectralnorm, norm(G_dpsyn - G, "2"))
+    names(G.spectralnorm)[length(G.spectralnorm)] <- "g.dpsyn"
   }
   
-  G.mse <- c(G.mse, sum((G_tilde/n*upper.tri.ind - G*upper.tri.ind)^2)/(sum(upper.tri.ind)-1))
-  names(G.mse)[length(G.mse)] <- "g.tilde"
+  if(syn == T){
+    
+    Xsyn <- as.matrix(syn.dat)
+    X1 <- cbind(rep(1, nrow(dat)),Xsyn)
+    G_syn <- t(X1)%*%X1/n
+    
+    G.fnorm <- c(G.fnorm, norm(G_syn - G, "F"))
+    names(G.fnorm)[length(G.fnorm)] <- "g.syn"
+    
+    G.spectralnorm <-  c(G.spectralnorm, norm(G_syn - G, "2"))
+    names(G.spectralnorm)[length(G.spectralnorm)] <- "g.syn"
+    
+  }
+  
+  G.fnorm <- c(G.fnorm, norm(G_tilde - G, "F"))
+  names(G.fnorm)[length(G.fnorm)] <- "g.tilde"
+  
+  G.spectralnorm <-  c(G.spectralnorm, norm(G_tilde - G, "2"))
+  names(G.spectralnorm)[length(G.spectralnorm)] <- "g.tilde"
   
 #**************************** apply to RCT ********************************#
   
   Mm <- model.matrix(y~., data = dat.rct)
   
-  dat.rct$p.syn <- Mm %*% beta.syn
+  if(syn) dat.rct$p.syn <- Mm %*% beta.syn
   if(syn.dp){dat.rct$p.syn.dp <- Mm %*% beta.syn.dp}
   dat.rct$p.gram <- Mm %*% beta.g
   dat.rct$p.gtilde <- Mm %*% beta.gtilde
@@ -230,12 +292,13 @@ gen_aux_predictions <- function(dat, dat.rct, lambda,
     select(starts_with("p."))
   
   beta.pred <- data.frame(gram = beta.g,
-                          syn = beta.syn,
-                          #syn.dp = beta.syn.dp,
                           gtilde = beta.gtilde,
                           beta.g.dp)
   
-  return(list(preds = preds, beta.pred = beta.pred, dp.noise=dp.noise, G.mse = G.mse))
+  if(syn.dp) beta.pred$syn.dp = beta.syn.dp
+  if(syn) beta.pred$syn = beta.syn
+  
+  return(list(preds = preds, beta.pred = beta.pred, dp.noise=dp.noise, G.fnorm = G.fnorm, G.spectralnorm = G.spectralnorm))
   
 }
 
@@ -245,7 +308,7 @@ gen_aux_predictions <- function(dat, dat.rct, lambda,
 
 
 run_sims <- function(n.sim = 1000, tau = 2, dat.rct, preds, seed = 2795,
-                          beta, syn.dp = T, epsilon, comparison = "reloop"){
+                          beta, syn.dp = T, syn = T, epsilon, comparison = "reloop"){
   
   set.seed(seed)
   
@@ -285,9 +348,11 @@ run_sims <- function(n.sim = 1000, tau = 2, dat.rct, preds, seed = 2795,
     Z.reloop <- as.matrix(dat.rct[,cov_idx])
     colnames(Z.reloop) <- NULL
       
+    if(syn){  
     it.ob["reloop.syn"] <- loop(Y = Y, Tr= Tr, Z =  Z.reloop, yhat = preds$p.syn,
                                   pred = reloop)[1]
-      
+    }    
+    
     if(syn.dp){
       it.ob["reloop.syn.dp"] <- loop(Y = Y, Tr= Tr, Z =  Z.reloop, yhat = preds$p.syn.dp,
                                     pred = reloop)[1]
@@ -310,8 +375,10 @@ run_sims <- function(n.sim = 1000, tau = 2, dat.rct, preds, seed = 2795,
       
       reg.dat <- data.frame(Y = Y, Z = Tr, preds)
       
-      it.ob["re.syn"] <- lm(Y ~ Z + p.syn, data = reg.dat)$coefficients["Z"]
-      
+      if(syn){
+        it.ob["re.syn"] <- lm(Y ~ Z + p.syn, data = reg.dat)$coefficients["Z"]
+      }
+        
       if(syn.dp){
         it.ob["re.syn.dp"] <-  lm(Y ~ Z + p.syn.dp, data = reg.dat)$coefficients["Z"]
       }
@@ -343,16 +410,18 @@ run_sims <- function(n.sim = 1000, tau = 2, dat.rct, preds, seed = 2795,
 ################### SIM WRAPPER ########################
 
 sim_wrapper <- function(n.obs, n.rct,                                   #sample sizes
-                        P, prop.norm, prop.sig,                         #n variables and types of vaes
+                        P, prop.norm, prop.sig,                         #n variables and types of variables
                         alpha, beta.bank, unex.sig,                     #y parameters
                         lambda,                                         #privacy parameters for normal noise
                         mechanism = "gaussian", epsilon, delta = 10^-5, #privacy parameters for DP
+                        lbounddp = NULL, ubounddp = NULL,               #additional privacy parameters for DP
                         n.sim.dat, n.sim.treat, tau,                    #specifications for simulations
                         comparison = "reloop",                          #whether to use regression or reloop estimators
-                        syn.dp = T                                      #whether or not to run synthetic DP 
+                        syn.dp = F, syn = T,                             #whether or not to generate DP / vanilla synthetic data 
+                        seed = 298
 ){
   
-  sim.list <- foreach(i = 1:n.sim.dat) %do% {
+  sim.list <- foreach(i = 1:n.sim.dat) %dopar% {
     print(paste0("simulated data: ", i))
     
     # generate and save simulated data
@@ -362,7 +431,7 @@ sim_wrapper <- function(n.obs, n.rct,                                   #sample 
                                 alpha = alpha,
                                 beta.bank = beta.bank,
                                 unex.sig = unex.sig,
-                                seed = i)
+                                seed = seed + i)
     
     dat <- dat.list$dat
     dat.rct <- dat.list$dat.rct
@@ -370,18 +439,26 @@ sim_wrapper <- function(n.obs, n.rct,                                   #sample 
     # calculate auxiliary predictions
     aux.out <- gen_aux_predictions(dat, dat.rct, lambda = lambda, mechanism=mechanism, 
                                    epsilon = epsilon, delta = delta,
-                                   seed = i, syn.dp = syn.dp)
+                                   dp.lbound = lbounddp, dp.upbound = ubounddp,
+                                   seed = seed + i, syn.dp = syn.dp, syn = syn)
     
     # run estimation simulations
     sim.out <- run_sims(n.sim = n.sim.treat, tau = tau, dat.rct = dat.rct, preds = aux.out$preds,
-                        beta = dat.list$beta, seed = i, syn.dp = syn.dp, epsilon = epsilon,
-                        comparison = comparison)
+                        beta = dat.list$beta, seed = seed + i, syn.dp = syn.dp, epsilon = epsilon,
+                        comparison = comparison, syn = syn)
     
     #save DP noise parameters
     sim.out$dp.noise <- aux.out$dp.noise
     
     #save gram matrix mse
-    sim.out$G.mse <- aux.out$G.mse
+    sim.out$G.fnorm <- aux.out$G.fnorm
+    
+    #save gram matrix spectral norms
+    sim.out$G.spectralnorm <- aux.out$G.spectralnorm
+    
+    #save beta estimations
+    sim.out$beta.pred <- aux.out$beta.pred %>%
+      mutate(true = dat.list$beta)
     
     sim.out$obs.y = dat$y
     sim.out$rct.y = dat.rct$y

@@ -106,7 +106,9 @@ cw_bootstrap_inference <- function(X.trial, Y.trial, Tr, mean.aux,
   n <- nrow(X.trial)
   
   boot.dist <- foreach(i = 1:nboot, .combine = rbind) %dopar% {
-  
+    
+    if(i %% 10 == 0) print(paste("completing bootstrap", i, "of", nboot))
+    
     #get bootstrap sample
     bsamp <- sample(n, replace = TRUE)
     
