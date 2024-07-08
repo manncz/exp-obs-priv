@@ -25,45 +25,49 @@ library(tibble)
 source("00-helper-funs.R")
 source("00-cw-funs.R")
 source("11-sim-funs-gen.R")
-py_run_file("00-import-packages.py")
 ```
 
 
 Set some parameters for all simulations
 ```{r}
 inference = T
-dp.syn = T
+dp.syn = F
 n.sim = 1000
 ```
 
 ## P = 10
 
 ```{r,p.10}
+p = 10
+lbound <- c(0,rep(-1.5, p+1))
+ubound <- c(5, rep( 3.5, p+1))
+
 numCores <- detectCores()
 registerDoParallel(numCores)
 
 system.time({
   
-  sim.gen.10 <- sim_wrapper_gen(n.obs=1000, n.rct=100, P=10, prop.norm=1, prop.sig=.6,
+  sim.gen.10 <- sim_wrapper_gen(n.obs=10000, n.rct=100, P=10, prop.norm=1, prop.sig=.6,
                         alpha = .5, beta.bank=.7, unex.sig = sqrt(.3),                   
                         select.alpha =-2, select.gamma=1,                    
                         select.beta.bank = -1, select.prop.sig=.5,
                         lambda=1, syn.epsilon = 3,                                        
-                        mechanism = "gaussian", epsilon = c(1,3,6), delta = 10^-5, 
+                        mechanism = "gaussian", epsilon = c(1,3,6,15,30), delta = 10^-5, 
+                        lbounddp = lbound, ubounddp = ubound,
                         n.sim.dat=n.sim, n.sim.treat=1, tau=.5,                    
                         syn.dp = dp.syn, cw.inference = inference,
                         nboot.inf = 100, level= .05)
   
 })
 
-
+stopImplicitCluster()
 
 save(sim.gen.10, file = "sim-out/gen-sim-result-raw-10.Rdata")
 ```
 
 
 ```{r,p.10.save}
-out.p10 <- foreach(i = 1:(length(sim.gen.10)-2), .combine=rbind) %dopar% {
+out.p10 <- foreach(i = 1:(length(sim.gen.10)-2), .combine=rbind) %do% {
   
   if(!is.null(sim.gen.10[[i]]$result.dat)){
     it.result <- sim.gen.10[[i]]$result.dat %>%
@@ -74,7 +78,7 @@ out.p10 <- foreach(i = 1:(length(sim.gen.10)-2), .combine=rbind) %dopar% {
   }
 }
 
-stopImplicitCluster()
+
 
 est.p10 <- out.p10 %>%
   filter(type == "est")
@@ -88,65 +92,56 @@ if(!inference){
 }
 
 
-noise.p10 <- foreach(i = 1:(length(sim.gen.10)-2), .combine=rbind) %do% {
-  
-  sim.gen.10[[i]]$dp.noise 
-  
-}
 
-noise.p10 <- noise.p10 %>%
-  data.frame() %>%
-  mutate(epsilon = 1) %>%
-  group_by(epsilon) %>%
-  summarize(across(everything(),mean))
-  
-
-gmse.p10 <- foreach(i = 1:(length(sim.gen.10)-2), .combine=rbind) %do% {
+auxmeans.p10 <- foreach(i = 1:(length(sim.gen.10)-2), .combine=rbind) %do% {
  
-  it.result <- sim.gen.10[[i]]$mean.mse
+  it.result <- sim.gen.10[[i]]$aux.means
   
   it.result
   
 }
 
-gmse.p10 <- gmse.p10 %>%
-  data.frame() %>%
-  group_by(m.aux) %>%
-  summarize(across(everything(),mean))
 
 beta.10 <- sim.gen.10$beta
 select.beta.10 <- sim.gen.10$select.beta
 
 
-save(est.p10, coverage.p10, noise.p10, gmse.p10, beta.10, select.beta.10,
+save(est.p10, coverage.p10, auxmeans.p10, beta.10, select.beta.10,
      file = "sim-out/gen-sim-result-10.Rdata")
 ```
 
 ## P = 20
 
 ```{r,p.20}
+p = 20
+lbound <- c(1,rep(-1.5, p+1))
+ubound <- c(6, rep(3.5, p+1))
+
 
 registerDoParallel(numCores)
 
 system.time({
   
-  sim.gen.20 <- sim_wrapper_gen(n.obs=1000, n.rct=100, P=20, prop.norm=1, prop.sig=.6,
+  sim.gen.20 <- sim_wrapper_gen(n.obs=10000, n.rct=100, P=20, prop.norm=1, prop.sig=.6,
                         alpha = .5, beta.bank=.7, unex.sig = sqrt(.3),                   
                         select.alpha =-2, select.gamma=1,                    
                         select.beta.bank = -1, select.prop.sig=.5,
-                        lambda=1, syn.epsilon = 3,                             
-                        mechanism = "gaussian", epsilon = c(1,3,6), delta = 10^-5, 
+                        lambda=1, syn.epsilon = 3,                                        
+                        mechanism = "gaussian", epsilon = c(3,6,15,30), delta = 10^-5, 
+                        lbounddp = lbound, ubounddp = ubound,
                         n.sim.dat=n.sim, n.sim.treat=1, tau=.5,                    
                         syn.dp = dp.syn, cw.inference = inference,
                         nboot.inf = 100, level= .05)
   
 })
 
+stopImplicitCluster()
+
 save(sim.gen.20, file = "sim-out/gen-sim-result-raw-20.Rdata")
 ```
 
 ```{r,p.20.save}
-out.p20 <- foreach(i = 1:(length(sim.gen.20)-2), .combine=rbind) %dopar% {
+out.p20 <- foreach(i = 1:(length(sim.gen.20)-2), .combine=rbind) %do% {
   
   if(!is.null(sim.gen.20[[i]]$result.dat)){
     it.result <- sim.gen.20[[i]]$result.dat %>%
@@ -157,7 +152,7 @@ out.p20 <- foreach(i = 1:(length(sim.gen.20)-2), .combine=rbind) %dopar% {
   }
 }
 
-stopImplicitCluster()
+
 
 est.p20 <- out.p20 %>%
   filter(type == "est")
@@ -171,35 +166,20 @@ if(!inference){
 }
 
 
-noise.p20 <- foreach(i = 1:(length(sim.gen.20)-2), .combine=rbind) %do% {
-  
-  sim.gen.20[[i]]$dp.noise 
-  
-}
 
-noise.p20 <- noise.p20 %>%
-  data.frame() %>%
-  mutate(epsilon = 1) %>%
-  group_by(epsilon) %>%
-  summarize(across(everything(),mean))
-  
-
-gmse.p20 <- foreach(i = 1:(length(sim.gen.20)-2), .combine=rbind) %do% {
+auxmeans.p20 <- foreach(i = 1:(length(sim.gen.20)-2), .combine=rbind) %do% {
  
-  it.result <- sim.gen.20[[i]]$mean.mse
+  it.result <- sim.gen.20[[i]]$aux.means
   
   it.result
   
 }
 
-gmse.p20 <- gmse.p20 %>%
-  data.frame() %>%
-  group_by(m.aux) %>%
-  summarize(across(everything(),mean))
+
 
 beta.20 <- sim.gen.20$beta
 select.beta.20 <- sim.gen.20$select.beta
 
-save(est.p20, coverage.p20, noise.p20, gmse.p20, beta.20, select.beta.20,
+save(est.p20, coverage.p20, auxmeans.p20, beta.20, select.beta.20,
      file = "sim-out/gen-sim-result-20.Rdata")
 ```

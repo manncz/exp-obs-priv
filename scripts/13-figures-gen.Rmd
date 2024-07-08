@@ -14,26 +14,27 @@ library(tidyr)
 library(stringr)
 library(xtable)
 library(tikzDevice)
+library(forcats)
 ```
 
 ```{r}
-mods <- c("dif.mean", "reg.est","acwt.aux","acwt.gtilde",
+mods <- c("dif.mean", "reg.est","acwt.aux",
           "acwt.epsilon1","acwt.epsilon3","acwt.epsilon6",
-          "acwt.epsilon10", "acwt.syn", "acwt.syn.dp")
+          "acwt.epsilon15","acwt.epsilon30", "acwt.syn")
 
 mod.names <- c("Simple Difference", 
                "Regression", 
                "ACW-t - G",
-               "ACW-t - G-tilde",
                "ACW-t - G*, e=1",
                "ACW-t - G*, 3",
                "ACW-t - G*, 6",
-               "ACW-t - G*, 10",
-               "ACW-t - Synthetic",
-               "ACW-t - DP synthetic")
+               "ACW-t - G*, 15",
+               "ACW-t - G*, 30",
+               "ACW-t - Synthetic")
 ```
+## Separate Plots
 
-## P = 10
+### P = 10
 
 ```{r}
 load("sim-out/gen-sim-result-10.Rdata")
@@ -43,7 +44,7 @@ load("sim-out/gen-sim-result-10.Rdata")
 plot.dat <- est.p10 %>%
   select(-sate, -type) %>%
   pivot_longer(!it, names_to = "model", values_to = "est") %>%  
-  filter(!str_starts(model, "cw"))
+  filter(model %in% mods)
 
 plot.dat$mod <- factor(plot.dat$model, levels = mods, labels = mod.names)
 ```
@@ -64,9 +65,7 @@ ggplot(data = plot.dat, aes(y = est, x = mod)) +
         legend.text = element_text(size = 8))
 ```
 
-```{r}
-gmse.p10
-```
+
 ```{r}
 est.p10 %>%
   select(-type, -sate, -it) %>%
@@ -74,14 +73,13 @@ est.p10 %>%
   t()
 ```
 
-
-### MSE
-
 ```{r}
+groups <- factor(sample(1:20, nrow(est.p10), replace = T))
+
 sim.se <- est.p10 %>%
+  mutate(group = groups) %>%
   select(-sate, -type) %>%
-  pivot_longer(!it, names_to = "model", values_to = "val") %>%
-  mutate(group =factor(rep(1:20,each=800))) %>%
+  pivot_longer(!(it|group), names_to = "model", values_to = "val") %>%
   group_by(model, group)%>%
   summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
   mutate(bias2 = (est_mean-.5)^2, mse = est_var + bias2)  %>%
@@ -145,12 +143,11 @@ dev.off()
 ```
 
 
-## SATE
 ```{R, sate}
 mean(est.p10$sate)
 ```
 
-## P = 20
+### P = 20
 
 ```{r}
 load("sim-out/gen-sim-result-20.Rdata")
@@ -160,7 +157,7 @@ load("sim-out/gen-sim-result-20.Rdata")
 plot.dat1 <- est.p20 %>%
   select(-sate, -type) %>%
   pivot_longer(!it, names_to = "model", values_to = "est") %>%  
-  filter(!str_starts(model, "cw"))
+  filter(model %in% mods)
 
 plot.dat1$mod <- factor(plot.dat1$model, levels = mods, labels = mod.names)
 ```
@@ -188,14 +185,13 @@ est.p20 %>%
   t()
 ```
 
-### MSE
-
-
 ```{r}
+groups <- factor(sample(1:20, nrow(est.p20), replace = T))
+
 sim.se20 <- est.p20 %>%
+  mutate(group = groups) %>%
   select(-sate, -type) %>%
-  pivot_longer(!it, names_to = "model", values_to = "val") %>%
-  mutate(group =factor(rep(1:20,each=800))) %>%
+  pivot_longer(!(it|group), names_to = "model", values_to = "val") %>%
   group_by(model, group)%>%
   summarize(est_mean = mean(val, na.rm = T), est_var = var(val, na.rm = T)) %>%
   mutate(bias2 = (est_mean-.5)^2, mse = est_var + bias2)  %>%
@@ -258,7 +254,7 @@ g
 dev.off()
 ```
 
-### Combined plot
+## Combined plot
 
 ```{r}
 plot.dat.long20$ncovs = "p = 20"
@@ -275,28 +271,34 @@ plot.dat.combined <- plot.dat %>%
 
 ```{r}
 cols <- c("#1F78B4","#FDBF6F")
+
 g <- ggplot() +
-  geom_bar(position="stack", stat="identity",data = plot.dat.long.combined, aes(fill = component, y = value, x = model)) +
-   geom_errorbar(data = plot.dat.combined, aes(x = model, ymin = lb_mse, ymax = ub_mse), linewidth = .4, width = .5) +
+  geom_bar(position="stack", stat="identity",data = plot.dat.long.combined, aes(fill = component, y = value, x = fct_rev(model))) +
+   geom_errorbar(data = plot.dat.combined, aes(x = fct_rev(model), ymin = lb_mse, ymax = ub_mse), linewidth = .4, width = .5) +
   facet_wrap(~ncovs)+
-  ylab("MSE") + 
+  ylab("") + 
   xlab("") +
-  scale_fill_manual(name="", values= cols,labels =c("Variance", "Bias"))+
+  coord_flip() +
+  scale_fill_manual(name="MSE = ", values= cols,labels =c("Variance + ", "Squared Bias"))+
   #ggtitle("P = 20")+
   theme(text = element_text(family = "sans",
                             size = 10),
         panel.border = element_blank(),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
+        panel.background = element_rect(fill='white'),
+        panel.grid.major.x = element_line(color = "grey80"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
         plot.title = element_text(hjust = 0.5),
-        axis.text.x = element_text(angle=45, size = 10, hjust =1),
-        axis.text.y = element_text(size = 10),
-        axis.title.y = element_text(size = 10),
-        axis.title.x = element_text(size = 10),
+        axis.title = element_blank(),
+        axis.text.y = element_text(size = 10,color = "black"),
+        axis.text.x = element_text(size = 8),
+        axis.line.x = element_line(color = "black"),
+        #axis.line.y = element_line(color = "black"),
         strip.text = element_text(size = 10),
         legend.position = "bottom",
-        legend.text = element_text(size = 10))
-  
+        legend.text = element_text(size = 10),
+        legend.margin=ggplot2::margin(0,0,0,0),
+        plot.margin = unit(c(0, 0, 0, 0),"inches"))
 g
 ```
 
@@ -305,48 +307,45 @@ png("../figures/gen-mse-comb.png", width = 10, height = 6, units = 'in', res = 3
 g
 dev.off()
 ```
-tikz version
-```{r}
-g <- ggplot()+
-  geom_bar(position="stack", stat="identity",data = plot.dat.long.combined, aes(fill = component, y = value, x = model)) +
-  geom_errorbar(data = plot.dat.combined, aes(x = model, ymin = lb_mse, ymax = ub_mse), linewidth = .4, width = .5) +
-  facet_wrap(~ncovs)+
-  ylab("MSE") + 
-  xlab("") +
-  scale_fill_manual(name="", values= cols,labels =c("Variance", "Bias"))+
-  #ggtitle("P = 20")+
-  theme(text = element_text(family = "sans",
-                            size = 8),
-        panel.border = element_blank(),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.text.x = element_text(angle=45, size = 8, hjust =1, color = "black"),
-        axis.text.y = element_text(size = 8),
-        axis.title.y = element_text(size = 8),
-        axis.title.x = element_text(size = 8),
-        strip.text = element_text(size = 8),
-        legend.position = "bottom",
-        legend.text = element_text(size = 8))
-
-```
 
 ```{r}
-tikz(file = "../figures/gen-mse-comb.tex", width = 6.6, height = 4)
+tikz(file = "../figures/gen-mse-comb-paper.tex", width = 6, height = 4, symbolicColors = T, colorFileName = "../figures/figcolorsgen.tex")
 g
 dev.off()
 ```
 
 
-### Coverage
+## Coverage Table
 
 ```{r}
-coverage.all <- coverage.p10 %>%
+mod.names <- c("$\\tdm$", 
+               "$\\tregrct$", 
+               "$\\tacwt(\\g)$",
+               "$\\tacwt(\\gstar)$",
+               "$\\tacwt(\\gstar)$",
+               "$\\tacwt(\\gstar)$",
+               "$\\tacwt(\\gstar)$",
+               "$\\tacwt(\\gstar)$",
+               "$\\tacwt(\\syn)$")
+xwalk <- data.frame(labs = mod.names, mod = mods)
+```
+
+
+```{r}
+coverage.p10long <- coverage.p10 %>%
   mutate(ncov = 10) %>%
-  rbind(coverage.p20 %>% mutate(ncov = 20)) %>%
-  mutate(group = factor(rep(1:40, each=50))) %>%
+  mutate(group = factor(rep(1:20, each=50))) %>%
   select(-sate, -type) %>%
   pivot_longer(!it:group, names_to = "mod", values_to = "val") 
+
+
+coverage.all <- coverage.p20 %>%
+  mutate(ncov = 20) %>%
+  mutate(group = factor(rep(1:20, each=50))) %>%
+  select(-sate, -type) %>%
+  pivot_longer(!it:group, names_to = "mod", values_to = "val") %>%
+  rbind(coverage.p10long)
+
 
 coverage.group <- coverage.all %>%
   group_by(ncov, group, mod) %>%
@@ -365,14 +364,117 @@ coverage.tab <- coverage.all %>%
               names_glue = "{.value}{ncov}") %>%
   filter(mod %in% mods) %>%
   mutate(mod = factor(mod, levels = mods)) %>%
-  arrange(mod)
+  left_join(xwalk, by = "mod") %>%
+  mutate(ep = case_when(str_detect(mod, "epsilon") ~ str_extract(mod, "\\d+"),
+                                   TRUE ~ "-")) %>%
+  arrange(factor(mod, levels = mods))
+
+coverage.tab
+```
+
+
+```{r}
+coverage.tab %>%
+  select(labs, ep, covg10, covg20) %>%
+  kable(booktabs = T, col.names = c("Estimate of the PATE","$\\epsilon$" ,"p = 10", "p = 20"),
+                    escape = FALSE, align = "lccc", full_width = F) %>% 
+  kable_styling(latex_options = c("hold_position","scale_down")) %>%
+  row_spec(row = 0, align = "c", bold=T) %>%
+  pack_rows("RCT data only", 1,2) %>%
+  pack_rows("Includes auxiliary data", 3,9) %>%
+  add_header_above(c(" " = 2, "Coverage" = 2),  bold = T)
+```
+
+
+
+
+
+```{r}
+df <- coverage.tab %>%
+  select(labs, ep, covg10, covg20) %>%
+  kable(booktabs = T, col.names = c("Estimate of the PATE","$\\epsilon$" ,"p = 10", "p = 20"),
+                    escape = FALSE, align = "lccc", full_width = F, format = "latex") %>% 
+  kable_styling(latex_options = c("hold_position","scale_down")) %>%
+  row_spec(row = 0, align = "c", bold=T) %>%
+  pack_rows("RCT data only", 1,2) %>%
+  pack_rows("Includes auxiliary data", 3,9) %>%
+  add_header_above(c(" " = 2, "Coverage" = 2),  bold = T)
+
+write_lines(df, '../figures/gen-coverage.tex')
+out <- read_lines('../figures/gen-coverage.tex')
+write_lines(out[-c(1, length(out))], '../figures/gen-coverage.tex')
+```
+
+## Other Utility Metrics
+```{r}
+meanslist <- list("10" = auxmeans.p10,"20" = auxmeans.p20)
 ```
 
 ```{r}
-xtab <- xtable(coverage.tab, caption = "", table.placement = "ht")
-
-print(xtab, comment = F, size="footnotesize",
-      file='../figures/gen-coverage.tex', include.rownames = F)
+auxmean.mse.all <- foreach(p = names(meanslist), .combine = rbind) %do% {
+  mean.mse <- meanslist[[p]] %>%
+    rownames_to_column(var = "var") %>%
+    mutate(it = case_when(str_detect(var, "y") & str_detect(var, "\\d") ~ str_extract(var, "\\d+"),
+                          str_detect(var, "y") ~ "0",
+                          TRUE ~ NA)) %>%
+    fill(it) %>%
+    mutate(across(!it & !var, .fns = ~(.x - m.true)^2,.names = "{.col}_err")) %>%
+    group_by(it) %>%
+    summarize(across(ends_with("err"), ~(sqrt(mean(.x))))) %>%
+    pivot_longer(!it, names_to = "privmethod", values_to = "mse") %>%
+    group_by(privmethod) %>%
+    summarize(e_mse = mean(mse), se_mse = sd(mse)/sqrt(1000)) %>%
+    mutate(privmethod = str_replace(privmethod, "\\_err", "")) %>%
+    filter(privmethod != "m.true") %>%
+    mutate(p = p)
+}
 ```
 
 
+```{r}
+methorder <- c("m.aux", "m.syn", "m.epsilon1","m.epsilon3","m.epsilon6","m.epsilon15","m.epsilon30")
+dat.names <- c("$\\g$ (no privacy)",
+               "$\\syn$",
+               "$\\gstar$",
+               "$\\gstar$",
+               "$\\gstar$",
+               "$\\gstar$",
+               "$\\gstar$")
+xwalk <- data.frame(labs = dat.names, privmethod = methorder)
+```
+
+```{r}
+meanmse.tab <- auxmean.mse.all %>%
+  filter(privmethod %in% methorder) %>%
+  mutate(mse =sprintf("%1.2f (%1.3f)", e_mse*100, se_mse*100)) %>%
+  pivot_wider(names_from = p, values_from = c(e_mse, se_mse, mse),
+              names_glue = "{.value}_p{p}") %>%
+  left_join(xwalk, by = "privmethod")  %>%
+  mutate(privmethod = factor(privmethod, levels = methorder)) %>%
+  arrange(privmethod) %>%
+  mutate(ep = case_when(str_detect(privmethod, "epsilon") ~ str_extract(privmethod, "\\d+"),
+                                   TRUE ~ "-"))
+```
+
+```{r}
+meanmse.tab %>%
+  select(labs, ep, mse_p10, mse_p20) %>%
+  kable(booktabs = T, col.names = c("Data Release","$\\epsilon$" ,"p = 10", "p = 20"),
+                    escape = FALSE, align = "lccc", full_width = F) %>% 
+  kable_styling(latex_options = c("hold_position","scale_down")) %>%
+  row_spec(row = 0, align = "c", bold=T) %>%
+  add_header_above(c(" " = 2, "RMSE of Column Means (x 100)" = 2),  bold = T)
+```
+```{r}
+df <- meanmse.tab %>%
+  select(labs, ep, mse_p10, mse_p20) %>%
+  kable(booktabs = T, col.names = c("Data Release","$\\epsilon$" ,"p = 10", "p = 20"),
+                    escape = FALSE, align = "lccc", full_width = F, format = "latex") %>% 
+  kable_styling(latex_options = c("hold_position","scale_down")) %>%
+  row_spec(row = 0, align = "c", bold=T) %>%
+  add_header_above(c(" " = 2, "RMSE of Column Means (x 100)" = 2),  bold = T)
+
+write_lines(df, '../figures/gen-mean-rmse.tex')
+out <- read_lines('../figures/gen-mean-rmse.tex')
+write_lines(out[-c(1, length(out))], '../figures/gen-mean-rmse.tex')
+```

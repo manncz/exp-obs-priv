@@ -117,6 +117,7 @@ gen_obs_rct_dat_shift <- function(n.obs = 1000, n.rct = 50,
 gen_aux_means <- function(dat, dat.rct, 
                           lambda, epsilon = c(1,3,6), delta = 10^-5,
                           mechanism = "gaussian", syn.dp = T, syn.epsilon=3,
+                          dp.upbound = NULL, dp.lbound = NULL,
                           seed = 2795){
   
   set.seed(seed)
@@ -159,39 +160,65 @@ gen_aux_means <- function(dat, dat.rct,
     file.remove(paste0("datasynth/sim_dat",seed,".csv"))
   }
   
+  print("synthetic data complete")
+  
   #------------------------ Differentially private G ------------------------#
   X <- as.matrix(dat)
   n <- nrow(dat)
   p <- ncol(dat)
   
-  budget <- p/sum(c(p,p, (p-1)*p/2))
-  mean.epsilon <- epsilon[1]*budget
+  budget <- c(p, p, (p-1)*p/2)
+  budget <- budget/sum(budget)
+  names(budget) <- c("mean","e2","e12")
   
-  if(mechanism == "gaussian"){
-    mean.delta <- delta*budget
-    mean.noise <- calc_dp_err_gaus(X, epsilon = mean.epsilon, delta = mean.delta,
-                               statistic = "mean")
-  }else{
-    mean.noise <- calc_dp_err_lap(X, epsilon = mean.epsilon,statistic = "mean")
-  }
+  mean.epsilon <- epsilon[1]*budget["mean"]
   
-  mu.dp <- foreach(i = 1:length(epsilon),.combine =cbind) %do% {
-    set.seed(seed)
+  if(!is.null(dp.upbound)){
     
-    mean.noise <- mean.noise*epsilon[1]/epsilon[i]
-   
-    if(mechanism=="gaussian"){
-      mean.noise.vec <- sapply(sqrt(mean.noise), function(x){rnorm(1, mean = 0, sd = x)})
-    }else{
-      mean.noise.vec <- sapply(mean.noise, function(x){rlaplace(p, scale = x)})
+    mu.dp <- foreach(i = 1:length(epsilon), .combine = cbind) %do% {
+      
+      dp.g <- dp_private_gram(X, epsilon = epsilon[i], 
+                                mean.budget = budget["mean"], e2.budget =  budget["e2"], e12.budget = budget["e12"],
+                                lbound = dp.lbound, ubound = dp.upbound,
+                                delta = delta, mechanism = mechanism, seed = seed)
+      
+      it.mu <- dp.g[["G"]][1,-1]
+      
     }
     
-    mu.dp <- mu.aux + mean.noise.vec
+    mean.noise = NULL
     
-    mu.dp
+  }else{
+    if(mechanism == "gaussian"){
+      mean.delta <- delta*budget
+      mean.noise <- calc_dp_err_gaus(X, epsilon = mean.epsilon, delta = mean.delta,
+                                 statistic = "mean")
+    }else{
+      mean.noise <- calc_dp_err_lap(X, epsilon = mean.epsilon,statistic = "mean")
+    }
+  
+    mu.dp <- foreach(i = 1:length(epsilon),.combine =cbind) %do% {
+      set.seed(seed)
+      
+      mean.noise <- mean.noise*epsilon[1]/epsilon[i]
+     
+      if(mechanism=="gaussian"){
+        mean.noise.vec <- sapply(mean.noise, function(x){rnorm(1, mean = 0, sd = x)})
+      }else{
+        mean.noise.vec <- sapply(mean.noise, function(x){rlaplace(p, scale = x)})
+      }
+      
+      it.mu <- mu.aux + mean.noise.vec
+      
+      it.mu
+    }
+    
+    names(mean.noise) <- colnames(dat)
   }
   
   colnames(mu.dp) <- paste0("m.epsilon", epsilon)
+  
+  print("DP means complete")
   
   #------------------------ Noisy Gram Matrix G-tilde  ------------------------#
   
@@ -206,15 +233,9 @@ gen_aux_means <- function(dat, dat.rct,
                         )
   if(syn.dp){aux.mus$m.syn.dp <- mu.syn.dp}
   
-  #**************************** calculate mu mse ********************************# 
-  mu.mse <- apply(aux.mus, 2, FUN = function(x){mean((x-mu.aux)^2)})
-  
-  names(mean.noise) <- colnames(dat)
-  
+  #**************************** return dat ********************************# 
   return(list(aux.means = aux.mus,
-              mean.noise = mean.noise, 
-              epsilon= epsilon[1],
-              mean.vecs.mse= mu.mse))
+              mean.noise = mean.noise))
   
 }
 
@@ -287,6 +308,8 @@ run_sims_gen <- function(n.sim, tau, dat.rct, aux.means, beta,
         names(coverage) <- names(est)
       }
       
+      print(paste("cw", j, "complete"))
+      
       res <- rbind(est, coverage)
       
       colnames(res) <- paste(str_replace_all(str_to_lower(colnames(res)), "-", ""),
@@ -315,6 +338,7 @@ sim_wrapper_gen <- function(n.obs, n.rct,                               #sample 
                         select.beta.bank, select.prop.sig,
                         lambda,                                         #privacy parameters for normal noise
                         mechanism = "gaussian", epsilon, delta = 10^-5, #privacy parameters for DP
+                        lbounddp = NULL, ubounddp = NULL,                   #bounds on columns for DP
                         n.sim.dat, n.sim.treat, tau,                    #specifications for simulations
                         syn.dp = T,  syn.epsilon =3,                    #whether or not to run synthetic DP 
                         level = .05, cw.inference = F, nboot.inf = NULL, #parameters for inference
@@ -335,22 +359,26 @@ sim_wrapper_gen <- function(n.obs, n.rct,                               #sample 
   select.beta[sample(1:(P), P.sig)] <- select.beta.bank/P.sig
   select.beta <- c(select.alpha, select.beta, select.gamma)
   
-  sim.list <- foreach(i = 1:n.sim.dat) %dopar% {
+  sim.list <- foreach(i = 1:n.sim.dat, .errorhandling = "remove") %do% {
+    print(paste0("simulated data: ", i))
     
     dat.list <- gen_obs_rct_dat_shift(n.obs = n.obs, n.rct = n.rct,
                                       P = P, prop.norm = prop.norm,
                                       beta=beta, select.beta=select.beta,
                                       unex.sig = unex.sig,
-                                      seed = i)
+                                      seed = seed + i)
     
     aux.out <- gen_aux_means(dat=dat.list$dat, dat.rct=dat.list$dat.rct, lambda=lambda,
-                             epsilon = epsilon, delta = delta,
-                             seed = i, mechanism = mechanism, syn.dp = syn.dp,
-                             syn.epsilon = syn.epsilon)
+                             epsilon = epsilon, delta = delta, mechanism = mechanism, 
+                             dp.lbound = lbounddp, dp.upbound = ubounddp,
+                             syn.dp = syn.dp, syn.epsilon = syn.epsilon,
+                             seed = seed + i)
+    
+    print(paste0("auxiliary means ", i, "done"))
     
     #since we will be only running one treatment assignment vector for each dataset, set 
     #the seed outside of the function, so the treatment assignment is actually random
-    set.seed(i)
+    set.seed(seed + i)
     
     sim.res <- run_sims_gen(n.sim = n.sim.treat, tau = tau, dat.rct=dat.list$dat.rct,
                             aux.means=aux.out$aux.means, beta=beta,
@@ -359,7 +387,9 @@ sim_wrapper_gen <- function(n.obs, n.rct,                               #sample 
     sim.out <- list(result.dat = sim.res)
     
     sim.out$dp.noise <- aux.out$mean.noise
-    sim.out$mean.mse <- aux.out$mean.vecs.mse
+    sim.out$aux.means <- aux.out$aux.means %>%
+      data.frame() %>%
+      mutate(m.true = c(sum(beta), rep(1, P+1)))
     
     sim.out
     
